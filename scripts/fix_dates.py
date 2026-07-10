@@ -1,9 +1,25 @@
 """
 Конвертация datetime-колонок из формата Python sqlite3 ('YYYY-MM-DD HH:MM:SS')
 в ISO формат Prisma ('YYYY-MM-DDTHH:MM:SS.000Z') для корректного сравнения.
+
+Запуск:
+    python scripts/fix_dates.py
 """
-import sqlite3
-DB_PATH = "/home/z/my-project/db/custom.db"
+import os, sys, sqlite3
+
+# UTF-8 для Windows-консоли
+if sys.platform.startswith("win"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
+DB_PATH = os.path.join(PROJECT_DIR, "db", "custom.db")
+
+print(f"БД: {DB_PATH}")
 conn = sqlite3.connect(DB_PATH)
 c = conn.cursor()
 
