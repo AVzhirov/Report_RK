@@ -1,4 +1,6 @@
 #!/bin/bash
+# ВАЖНО: НЕ используем `set -e`, потому что command -v / grep в условиях
+# возвращают ненулевой код (что нормально), а set -e прибил бы скрипт.
 # ===========================================================================
 # RK7 Analytics — Установщик для Git Bash
 # ===========================================================================
@@ -16,7 +18,8 @@
 #   6. Запускает dev-сервер и открывает браузер
 # ===========================================================================
 
-set -e
+# НЕ включаем `set -e` — он прибивает скрипт когда command -v / grep
+# возвращают ненулевой код в условиях (что нормально для if-проверок).
 
 # Цвета
 RED='\033[0;31m'
@@ -72,30 +75,123 @@ else
     die "npm не найден (должен идти с Node.js)"
 fi
 
-# Python (пробуем python3, потом python, потом py)
+# Python — самый сложный случай на Windows:
+#   - command -v python может найти фейк из WindowsApps (открывает Microsoft Store)
+#   - может быть python3, python или py launcher
+#   - может вообще не быть установлен
+# Стратегия: проверяем по очереди, для каждой команды делаем реальный вызов
+# --version с таймаутом, и проверяем что в выводе есть "Python".
 PYTHON_CMD=""
-if command -v python3 &>/dev/null; then
-    PYTHON_CMD="python3"
-elif command -v python &>/dev/null; then
-    # Проверяем, что это не подделка Windows Store
-    PY_VER=$(python --version 2>&1)
-    if echo "$PY_VER" | grep -q "Python"; then
-        PYTHON_CMD="python"
-    fi
-fi
 
-if [ -n "$PYTHON_CMD" ]; then
-    PY_VER=$($PYTHON_CMD --version 2>&1)
-    ok "$PY_VER (через $PYTHON_CMD)"
-else
+echo "  Поиск Python..."
+
+check_python() {
+    local cmd="$1"
+    # Проверяем, что команда существует
+    if ! command -v "$cmd" &>/dev/null; then
+        return 1
+    fi
+    # Проверяем, что это не фейк WindowsApps (Microsoft Store stub)
+    local cmd_path
+    cmd_path=$(command -v "$cmd" 2>/dev/null)
+    if echo "$cmd_path" | grep -qi "WindowsApps"; then
+        return 1
+    fi
+    # Реальный вызов с таймаутом 5 сек (защита от зависания)
+    # В Git Bash на Windows может не быть `timeout` — пробуем оба варианта
+    local py_ver
+    if command -v timeout &>/dev/null; then
+        py_ver=$(timeout 5 "$cmd" --version 2>&1 || true)
+    else
+        # Fallback: запускаем в фоне с kill через 5 сек
+        py_ver=$("$cmd" --version 2>&1 </dev/null || true)
+    fi
+    if echo "$py_ver" | grep -q "Python"; then
+        echo "$py_ver"
+        return 0
+    fi
+    return 1
+}
+
+# Пробуем по очереди: python3, python, py
+for cmd in python3 python py; do
+    if py_out=$(check_python "$cmd"); then
+        PYTHON_CMD="$cmd"
+        ok "$py_out (через $PYTHON_CMD)"
+        break
+    fi
+done
+
+# Если Python не найден — предлагаем автоустановку через winget
+if [ -z "$PYTHON_CMD" ]; then
     err "Python не найден"
     echo ""
-    echo "  Установите Python 3.10+ с https://www.python.org/downloads/windows/"
-    echo "  ВАЖНО: при установке поставьте галочку 'Add Python to PATH'"
+    echo "  Python нужен для генерации демо-данных (5 ресторанов, 91k чеков)."
     echo ""
-    echo "  После установки ЗАКРОЙТЕ Git Bash и откройте заново, затем"
-    echo "  запустите этот скрипт снова."
-    die "Python обязателен для генерации демо-данных"
+    echo "  Варианты установки:"
+    echo "    1) Автоматически через winget (рекомендуется, Windows 10 1809+)"
+    echo "    2) Вручную с python.org (нужно скачать и установить)"
+    echo "    3) Выйти и установить позже"
+    echo ""
+    read -p "  Ваш выбор [1/2/3]: " py_choice
+
+    case "$py_choice" in
+        1)
+            # Проверяем winget
+            if command -v winget &>/dev/null; then
+                info "Устанавливаю Python 3.12 через winget..."
+                info "(может появиться окно UAC — нажмите 'Да')"
+                winget install Python.Python.3.12 --accept-source-agreements --accept-package-agreements || {
+                    err "winget install завершился с ошибкой"
+                    echo ""
+                    echo "  Установите Python вручную: https://www.python.org/downloads/windows/"
+                    echo "  ВАЖНО: при установке поставьте галочку 'Add Python to PATH'"
+                    echo ""
+                    echo "  После установки ЗАКРОЙТЕ Git Bash и откройте заново, запустите install.sh"
+                    die "Автоустановка Python не удалась"
+                }
+                ok "Python установлен через winget"
+                # Обновляем PATH для текущей сессии
+                export PATH="$PATH:/c/Users/$USER/AppData/Local/Programs/Python/Python312"
+                export PATH="$PATH:/c/Users/$USER/AppData/Local/Programs/Python/Python312/Scripts"
+                # Пробуем снова найти python
+                for cmd in python3 python py; do
+                    if py_out=$(check_python "$cmd"); then
+                        PYTHON_CMD="$cmd"
+                        ok "$py_out (через $PYTHON_CMD)"
+                        break
+                    fi
+                done
+                if [ -z "$PYTHON_CMD" ]; then
+                    warn "Python установлен, но не виден в текущей сессии Git Bash."
+                    echo ""
+                    echo "  ЗАКРОЙТЕ Git Bash и откройте заново, затем запустите install.sh снова."
+                    echo "  (PATH обновится только в новой сессии)"
+                    die "Перезапустите Git Bash"
+                fi
+            else
+                err "winget не найден (нужен Windows 10 1809+ или Windows 11)"
+                echo ""
+                echo "  Установите Python вручную: https://www.python.org/downloads/windows/"
+                echo "  ВАЖНО: при установке поставьте галочку 'Add Python to PATH'"
+                echo ""
+                echo "  После установки ЗАКРОЙТЕ Git Bash и откройте заново, запустите install.sh"
+                die "winget недоступен"
+            fi
+            ;;
+        2)
+            echo ""
+            echo "  Откройте в браузере: https://www.python.org/downloads/windows/"
+            echo "  Скачайте 'Windows installer (64-bit)'"
+            echo "  При установке ОБЯЗАТЕЛЬНО поставьте галочку 'Add Python to PATH'"
+            echo ""
+            echo "  После установки ЗАКРОЙТЕ Git Bash и откройте заново, запустите install.sh"
+            die "Установите Python вручную"
+            ;;
+        *)
+            die "Python обязателен для генерации демо-данных"
+            ;;
+    esac
 fi
 
 ok "Все зависимости готовы. Продолжаем..."
