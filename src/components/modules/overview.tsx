@@ -1,13 +1,12 @@
 "use client";
-import { Fragment, useState } from "react";
+import { Fragment } from "react";
 import { useAnalytics, formatRub, formatNum, formatDate } from "@/lib/use-analytics";
 import { KpiCard, SectionCard, LoadingBlock, ErrorBlock, AbcBadge } from "@/components/analytics/common";
-import { TrendingUp, ShoppingBag, Users, Clock, Percent, Coins, Database, AlertTriangle } from "lucide-react";
+import { TrendingUp, ShoppingBag, Users, Clock, Percent, Coins, AlertTriangle } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
   BarChart, Bar, PieChart, Pie, Cell, Legend, LineChart, Line,
 } from "recharts";
-import { toast } from "sonner";
 
 interface OverviewData {
   totalRevenue: number;
@@ -51,27 +50,8 @@ export function OverviewModule() {
   const { data: byRest, loading: byRestLoading } = useAnalytics<{ name: string; revenue: number; checks: number; avgCheck: number }[]>("sales-by-restaurant");
   const { data: topDishes, loading: topLoading } = useAnalytics<AbcRow[]>("menu-abc");
   const { data: hourly, loading: hourLoading } = useAnalytics<HourlyData>("sales-hourly");
-  const [loadingDemo, setLoadingDemo] = useState(false);
 
   const hasData = kpi ? kpi.totalChecks > 0 : false;
-
-  async function loadDemoFromOverview() {
-    setLoadingDemo(true);
-    try {
-      const res = await fetch("/api/settings/demo/load", { method: "POST" });
-      const j = await res.json();
-      if (!res.ok) {
-        toast.error("Ошибка загрузки", { description: j.error || "См. консоль" });
-      } else {
-        toast.success("Демо-данные загружены", { description: "Страница перезагрузится через 2 сек" });
-        setTimeout(() => window.location.reload(), 2000);
-      }
-    } catch (e) {
-      toast.error("Сеть недоступна", { description: String(e) });
-    } finally {
-      setLoadingDemo(false);
-    }
-  }
 
   return (
     <div className="space-y-5">
@@ -82,21 +62,9 @@ export function OverviewModule() {
           <div className="flex-1">
             <div className="font-semibold text-base" style={{ color: "#B33A3A" }}>В базе данных нет чеков за выбранный период</div>
             <div className="text-sm mt-1 text-muted-foreground">
-              Отчёты будут пустыми. Можно либо загрузить демо-данные (5 ресторанов, ~91k чеков за 180 дней),
-              либо подключить боевой MS SQL на странице «Настройки».
+              Попробуйте изменить период в шапке (например, выбрать «Год» или «Свой период»).
+              Управление данными (демо-данные, подключение MS SQL) — на странице «Настройки».
             </div>
-            <button
-              onClick={loadDemoFromOverview}
-              disabled={loadingDemo}
-              className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-60"
-              style={{ background: "var(--bordeaux)", color: "var(--cream)" }}
-            >
-              {loadingDemo ? (
-                <><Database className="w-4 h-4 animate-pulse" /> Загрузка… (30-60 сек)</>
-              ) : (
-                <><Database className="w-4 h-4" /> Загрузить демо-данные</>
-              )}
-            </button>
           </div>
         </div>
       )}
