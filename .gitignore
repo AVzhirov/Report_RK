@@ -30,8 +30,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files — .env committed as project default (no secrets for SQLite demo);
+# .env.local and .env.production are git-ignored for real MS SQL credentials
+.env.local
+.env.production
+.env.development.local
 
 # vercel
 .vercel
