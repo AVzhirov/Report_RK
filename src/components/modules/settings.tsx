@@ -154,12 +154,14 @@ export function SettingsModule() {
       const contentType = res.headers.get("content-type") || "";
       if (!contentType.includes("application/json")) {
         const text = await res.text();
+        // Покажем пользователю первые 200 символов ответа — обычно там есть подсказка
+        const preview = text.slice(0, 200).replace(/\s+/g, " ").trim();
         const hint = res.status === 404
-          ? "Роут /api/settings/sql/test не найден. Сделайте git pull origin main и перезапустите dev-сервер (Ctrl+C → npm run dev)."
-          : `Сервер вернул HTML вместо JSON (HTTP ${res.status}). Возможно, ошибка компиляции — проверьте консоль dev-сервера.`;
+          ? `Роут не найден (404). Сделайте git pull origin main и перезапустите dev-сервер (Ctrl+C → npm run dev). Ответ сервера: ${preview}`
+          : `Сервер вернул HTML вместо JSON (HTTP ${res.status}). Ответ: ${preview}`;
         setTestResult({ success: false, message: hint });
         toast.error("Подключение не удалось", { description: hint });
-        console.error("Non-JSON response:", text.slice(0, 500));
+        console.error("Non-JSON response:", text.slice(0, 1000));
         return;
       }
 
