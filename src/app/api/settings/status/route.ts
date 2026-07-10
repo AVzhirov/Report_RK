@@ -6,10 +6,36 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { isMssqlEnabled } from "@/lib/mssql";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  // Проверяем, какой источник данных активен
+  const dataSource = isMssqlEnabled() ? "mssql" : "sqlite";
+  const mssqlConfigured = isMssqlEnabled();
+
+  // Если включён MS SQL — не делаем count по SQLite (там может не быть данных)
+  if (dataSource === "mssql") {
+    return NextResponse.json({
+      dataSource,
+      mssqlConfigured,
+      counts: {
+        restaurants: 0, dishes: 0, employees: 0, tables: 0,
+        halls: 0, shifts: 0, visits: 0, orders: 0,
+        checks: 0, items: 0, payments: 0, discounts: 0,
+        awards: 0, opLog: 0,
+      },
+      dateRange: { min: null, max: null },
+      totalRevenue: 0,
+      dateFormatOk: true,
+      hasData: true, // предполагаем что в MS SQL есть данные
+      needsDemoLoad: false,
+      needsDateFix: false,
+      mssqlNote: "Активен MS SQL — данные берутся из боевой базы R-Keeper 7. Счётчики SQLite не отображаются.",
+    });
+  }
+
   try {
     const [
       restaurants, dishes, employees, tables, halls, shifts,
@@ -31,7 +57,6 @@ export async function GET() {
       db.operationLog.count(),
     ]);
 
-    // Проверим диапазон дат в PrintCheck
     let dateRange: { min: string | null; max: string | null } = { min: null, max: null };
     if (checks > 0) {
       const minMax = await db.$queryRaw<{ min: string; max: string }[]>(Prisma.sql`
@@ -40,7 +65,6 @@ export async function GET() {
       dateRange = { min: minMax[0]?.min || null, max: minMax[0]?.max || null };
     }
 
-    // Суммарная выручка
     let totalRevenue = 0;
     if (checks > 0) {
       const sumRow = await db.$queryRaw<{ s: number }[]>(Prisma.sql`
@@ -49,18 +73,18 @@ export async function GET() {
       totalRevenue = Number(sumRow[0]?.s || 0);
     }
 
-    // Проверим формат дат — возьмём одну запись и посмотрим
     let dateFormatOk = false;
     if (checks > 0) {
       const sample = await db.printCheck.findFirst({ select: { printTime: true } });
       if (sample) {
         const s = String(sample.printTime);
-        // Правильный ISO формат: 2026-07-10T02:10:00.000Z
         dateFormatOk = s.includes("T") && (s.endsWith("Z") || s.includes("+"));
       }
     }
 
     return NextResponse.json({
+      dataSource,
+      mssqlConfigured,
       counts: {
         restaurants, dishes, employees, tables, halls, shifts,
         visits, orders, checks, items, payments, discounts, awards, opLog,
@@ -69,9 +93,7 @@ export async function GET() {
       totalRevenue,
       dateFormatOk,
       hasData: checks > 0,
-      // Используется в UI: показывать баннер «Нет данных» или нет
       needsDemoLoad: checks === 0,
-      // Если данные есть но формат дат кривой — нужен fix_dates.py
       needsDateFix: checks > 0 && !dateFormatOk,
     });
   } catch (err: unknown) {

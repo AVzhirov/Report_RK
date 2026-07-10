@@ -27,6 +27,9 @@ interface StatusData {
   hasData: boolean;
   needsDemoLoad: boolean;
   needsDateFix: boolean;
+  dataSource?: "mssql" | "sqlite";
+  mssqlConfigured?: boolean;
+  mssqlNote?: string;
 }
 
 function fmtRub(v: number): string {
@@ -279,16 +282,40 @@ export function SettingsModule() {
       {/* Текущий статус БД */}
       <SectionCard
         title="Статус базы данных"
-        subtitle="Что сейчас находится в локальной SQLite (db/custom.db)"
+        subtitle={status.dataSource === "mssql"
+          ? "Активен MS SQL — данные берутся из боевой базы R-Keeper 7"
+          : "Демо-режим: данные из локальной SQLite (db/custom.db)"}
         action={
-          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={loading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            Обновить
-          </Button>
+          <div className="flex items-center gap-2">
+            <Badge style={{
+              background: status.dataSource === "mssql" ? "#2A5C3D" : "#C9A24B",
+              color: status.dataSource === "mssql" ? "white" : "#2A1A12"
+            }}>
+              {status.dataSource === "mssql" ? "🌐 MS SQL" : "📦 SQLite (демо)"}
+            </Badge>
+            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={loading}>
+              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+              Обновить
+            </Button>
+          </div>
         }
       >
-        {/* Алерты */}
-        {status.needsDemoLoad && (
+        {/* Если MS SQL активен — показываем инфо */}
+        {status.dataSource === "mssql" && (
+          <div className="mb-4 p-4 rounded-lg flex items-start gap-3" style={{ background: "rgba(42, 92, 61, 0.1)", border: "1px solid #2A5C3D" }}>
+            <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: "#2A5C3D" }} />
+            <div className="flex-1">
+              <div className="font-medium" style={{ color: "#2A5C3D" }}>Подключено к боевой базе R-Keeper 7</div>
+              <div className="text-sm mt-1">{status.mssqlNote || "Все отчёты используют реальные данные из MS SQL Server."}</div>
+              <div className="text-xs text-muted-foreground mt-2">
+                Если отчёты пустые — проверьте, что в выбранном периоде есть данные в таблицах PRINTCHECKS / VISITS / ORDERS.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Алерты (только для SQLite) */}
+        {status.dataSource !== "mssql" && status.needsDemoLoad && (
           <div className="mb-4 p-4 rounded-lg flex items-start gap-3" style={{ background: "rgba(217, 83, 79, 0.1)", border: "1px solid #D9534F" }}>
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: "#D9534F" }} />
             <div className="flex-1">
@@ -297,7 +324,7 @@ export function SettingsModule() {
             </div>
           </div>
         )}
-        {status.hasData && status.needsDateFix && (
+        {status.dataSource !== "mssql" && status.hasData && status.needsDateFix && (
           <div className="mb-4 p-4 rounded-lg flex items-start gap-3" style={{ background: "rgba(201, 162, 75, 0.15)", border: "1px solid #C9A24B" }}>
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: "#C9A24B" }} />
             <div className="flex-1">
@@ -306,7 +333,7 @@ export function SettingsModule() {
             </div>
           </div>
         )}
-        {status.hasData && status.dateFormatOk && (
+        {status.dataSource !== "mssql" && status.hasData && status.dateFormatOk && (
           <div className="mb-4 p-4 rounded-lg flex items-start gap-3" style={{ background: "rgba(42, 92, 61, 0.1)", border: "1px solid #2A5C3D" }}>
             <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: "#2A5C3D" }} />
             <div className="flex-1">
