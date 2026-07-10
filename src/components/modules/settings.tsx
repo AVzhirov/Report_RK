@@ -200,17 +200,26 @@ export function SettingsModule() {
       });
       const contentType = res.headers.get("content-type") || "";
       if (!contentType.includes("application/json")) {
+        const text = await res.text();
+        const preview = text.slice(0, 200).replace(/\s+/g, " ").trim();
         const hint = res.status === 404
-          ? "Роут не найден. Сделайте git pull origin main и перезапустите dev-сервер."
-          : `Сервер вернул HTML (HTTP ${res.status}). Проверьте консоль dev-сервера.`;
+          ? `Роут не найден (404). Сделайте git pull origin main и перезапустите dev-сервер. Ответ: ${preview}`
+          : `Сервер вернул HTML (HTTP ${res.status}). Ответ: ${preview}`;
         toast.error("Ошибка", { description: hint });
         return;
       }
       const j = await res.json();
       if (!res.ok) {
-        toast.error("Не удалось сохранить", { description: j.error });
+        toast.error("Не удалось сохранить", { description: j.error + (j.hint ? " " + j.hint : "") });
       } else {
-        toast.success("Параметры сохранены", { description: "Перезапустите dev-сервер" });
+        toast.success("✓ Параметры сохранены в .env.local", {
+          description: `Файл: ${j.fileSize} байт. Перезапустите dev-сервер (Ctrl+C → npm run dev)`,
+        });
+        // Обновим результат теста — покажем что сохранено
+        setTestResult({
+          success: true,
+          message: `Параметры MS SQL сохранены в .env.local (${j.fileSize} байт). Сохранённые переменные: ${JSON.stringify(j.savedVars)}`,
+        });
       }
     } catch (e) {
       toast.error("Сеть/сервер недоступен", { description: e instanceof Error ? e.message : String(e) });

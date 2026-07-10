@@ -99,9 +99,9 @@ export async function POST(req: Request) {
     pool = await sql.connect(config);
     const connectMs = Date.now() - start;
 
-    // Пробуем простой запрос — список таблиц R-Keeper 7
+    // Пробуем получить список всех таблиц базы
     const result = await pool.request().query(`
-      SELECT TOP 20 TABLE_NAME
+      SELECT TABLE_NAME
       FROM INFORMATION_SCHEMA.TABLES
       WHERE TABLE_TYPE = 'BASE TABLE'
       ORDER BY TABLE_NAME
@@ -114,9 +114,26 @@ export async function POST(req: Request) {
       }
     }
 
-    // Проверяем наличие ключевых таблиц R-Keeper 7
-    const rk7Tables = ["PRINTCHECKS", "ORDERS", "VISITS", "PAYMENTS", "MENUITEMS", "RESTAURANT", "EMPLOYEES"];
-    const foundRk7Tables = rk7Tables.filter(t => tables.includes(t));
+    // Ключевые таблицы R-Keeper 7 (по документации R-keeper-7-sql-base-info)
+    // Включаем разные варианты имён (единственное/множественное число, с/без префиксов)
+    const rk7Tables = [
+      // Основные транзакционные таблицы
+      "VISITS", "ORDERS", "PRINTCHECKS", "PAYMENTS",
+      "ITEMSSALED", "SALEDATAS", "DISCOUNTDETAILS", "DISHDISCOUNTS",
+      // Справочники
+      "RESTAURANT", "RESTAURANTS", "EMPLOYEES", "MENUITEMS", "DISHES",
+      "DISCOUNTS", "TAXRATE", "TAXRATES", "CURRENCY", "CURRENCIES",
+      // Смены/касса
+      "CASHES", "GLOBALSHIFTS", "CASHGROUPS", "CASHCONFIG",
+      // Hall
+      "HALLPLANS", "RESTAURANTTABLES", "TABLES",
+      // Прочее
+      "BRIGADES", "BONUSTYPES", "AWARDSPENALTIESDATA",
+      "CLASSINFOS", "REFTABLES", "OPERATIONLOG",
+    ];
+    // Ищем case-insensitive (R-Keeper может использовать разный регистр)
+    const tablesUpper = tables.map(t => t.toUpperCase());
+    const foundRk7Tables = rk7Tables.filter(t => tablesUpper.includes(t.toUpperCase()));
 
     return NextResponse.json({
       success: true,
@@ -125,12 +142,12 @@ export async function POST(req: Request) {
       database: body.database,
       user: body.user,
       tablesCount: tables.length,
-      sampleTables: tables.slice(0, 30),
+      sampleTables: tables.slice(0, 100), // показываем все таблицы (до 100)
       rk7TablesFound: foundRk7Tables,
-      rk7LooksValid: foundRk7Tables.length >= 4,
-      message: foundRk7Tables.length >= 4
-        ? `✓ Подключение успешно (${connectMs} мс). Найдено таблиц R-Keeper 7: ${foundRk7Tables.length}/${rk7Tables.length}.`
-        : `⚠ Подключение успешно (${connectMs} мс), но не все ключевые таблицы R-Keeper 7 найдены. Возможно, это не база R-Keeper?`,
+      rk7LooksValid: foundRk7Tables.length >= 3, // хотя бы 3 ключевых таблицы найдены
+      message: foundRk7Tables.length >= 3
+        ? `✓ Подключение успешно (${connectMs} мс). Найдено таблиц R-Keeper 7: ${foundRk7Tables.length}. База похожа на R-Keeper 7.`
+        : `⚠ Подключение успешно (${connectMs} мс), но не найдено ключевых таблиц R-Keeper 7. Возможно, это другая база?`,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
