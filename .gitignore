@@ -50,7 +50,8 @@ local-*
 *.log
 dev.log
 dev.out.log
-test
+# ВНИМАНИЕ: НЕ игнорировать 'test' глобально — это блокирует /api/settings/sql/test/
+# Если нужно игнорировать конкретную папку test — указывайте путь: /path/to/test/
 prompt
 
 server.log
