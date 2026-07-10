@@ -60,10 +60,18 @@ if [ ! -d "node_modules/@prisma/client" ]; then
 fi
 
 # Проверка .env
+# ВАЖНО: Prisma интерпретирует ОТНОСИТЕЛЬНЫЙ путь относительно prisma/,
+# поэтому используем АБСОЛЮТНЫЙ путь к БД.
 if [ ! -f ".env" ]; then
     warn ".env не найден. Создаю..."
-    echo "DATABASE_URL=file:./db/custom.db" > .env
-    ok ".env создан"
+    PROJECT_ABS_PATH="$PWD"
+    if [[ "$PROJECT_ABS_PATH" == /c/* ]]; then
+        PROJECT_ABS_PATH="C:${PROJECT_ABS_PATH#/c}"
+    elif [[ "$PROJECT_ABS_PATH" == /d/* ]]; then
+        PROJECT_ABS_PATH="D:${PROJECT_ABS_PATH#/d}"
+    fi
+    echo "DATABASE_URL=file:$PROJECT_ABS_PATH/db/custom.db" > .env
+    ok ".env создан (DATABASE_URL=file:$PROJECT_ABS_PATH/db/custom.db)"
 fi
 
 # Проверка БД

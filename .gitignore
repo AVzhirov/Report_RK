@@ -30,8 +30,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files — .env committed as project default (no secrets for SQLite demo);
-# .env.local and .env.production are git-ignored for real MS SQL credentials
+# env files — все .env* игнорируются (создаются install.sh со абсолютным путём к БД,
+# который у каждого пользователя свой; для боевого MS SQL — секреты в .env.local)
+.env
 .env.local
 .env.production
 .env.development.local
@@ -63,4 +64,4 @@ server.log
 /.zscripts/
 /scripts/test_prisma*.ts
 *.db
-*.db-journal
+*.db-journal.env

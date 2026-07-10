@@ -284,13 +284,33 @@ ok "Prisma Client сгенерирован"
 # --- .env + db:push ---
 step "[6/8] НАСТРОЙКА ОКРУЖЕНИЯ И СОЗДАНИЕ БД"
 
-# ВАЖНО: .env должен содержать ОТНОСИТЕЛЬНЫЙ путь к БД, не абсолютный.
-# Если на машине уже был .env с абсолютным путем — переписываем.
-echo "DATABASE_URL=file:./db/custom.db" > .env
-ok ".env создан (DATABASE_URL=file:./db/custom.db)"
+# ВАЖНО: Prisma 6.x для SQLite интерпретирует ОТНОСИТЕЛЬНЫЙ путь в DATABASE_URL
+# относительно папки prisma/ (где лежит schema.prisma), а не корня проекта.
+# То есть `file:./db/custom.db` создаст БД в prisma/db/custom.db.
+# Поэтому используем АБСОЛЮТНЫЙ путь — тогда Prisma создаст БД там, где мы хотим.
+PROJECT_ABS_PATH="$PWD"
+# Конвертируем Git Bash путь /c/... в Windows-путь C:/... для Prisma
+# (Prisma на Windows ожидает Windows-пути, не Unix-стиль)
+if [[ "$PROJECT_ABS_PATH" == /c/* ]]; then
+    PROJECT_ABS_PATH="C:${PROJECT_ABS_PATH#/c}"
+elif [[ "$PROJECT_ABS_PATH" == /d/* ]]; then
+    PROJECT_ABS_PATH="D:${PROJECT_ABS_PATH#/d}"
+elif [[ "$PROJECT_ABS_PATH" == /e/* ]]; then
+    PROJECT_ABS_PATH="E:${PROJECT_ABS_PATH#/e}"
+fi
+# Заменяем / на \ (Prisma принимает оба формата, но для Windows надёжнее /)
+DB_ABS_PATH="$PROJECT_ABS_PATH/db/custom.db"
+
+info "Абсолютный путь к БД: $DB_ABS_PATH"
+echo "DATABASE_URL=file:$DB_ABS_PATH" > .env
+ok ".env создан (DATABASE_URL=file:$DB_ABS_PATH)"
 
 # Удаляем старую БД если была (чтобы гарантировать чистый старт)
 [ -f "db/custom.db" ] && { info "Удаляю старую БД..."; rm -f db/custom.db; }
+# Также удаляем БД в prisma/ (могла создаться при старой установке с относительным путём)
+[ -f "prisma/db/custom.db" ] && { info "Удаляю старую БД в prisma/db/..."; rm -f "prisma/db/custom.db"; }
+[ -d "prisma/db" ] && rmdir "prisma/db" 2>/dev/null || true
+[ -f "prisma/custom.db" ] && rm -f "prisma/custom.db" 2>/dev/null || true
 
 info "Создание базы данных SQLite (npm run db:push)..."
 npm run db:push || die "db:push завершился с ошибкой"
@@ -298,7 +318,7 @@ ok "Prisma сообщила о создании БД"
 
 # КРИТИЧНО: проверяем что таблицы реально создались в db/custom.db
 # (Prisma может отработать успешно, но создать БД в другом месте,
-# если в .env был абсолютный путь или путь к другому файлу)
+# если в .env был неверный путь)
 info "Проверка что таблицы создались в db/custom.db..."
 TABLES_COUNT=$($PYTHON_CMD -c "
 import sqlite3, os
@@ -318,11 +338,14 @@ if [ "$TABLES_COUNT" -lt 10 ]; then
     echo "  Проверка:"
     echo "    - .env содержит: $(cat .env)"
     echo "    - db/custom.db существует: $([ -f db/custom.db ] && echo 'да' || echo 'нет')"
+    echo "    - prisma/db/custom.db существует: $([ -f prisma/db/custom.db ] && echo 'да' || echo 'нет')"
+    echo "    - prisma/custom.db существует: $([ -f prisma/custom.db ] && echo 'да' || echo 'нет')"
     echo ""
     echo "  Решение:"
     echo "    1. Удалите .env: rm -f .env"
-    echo "    2. Пересоздайте .env: echo 'DATABASE_URL=file:./db/custom.db' > .env"
-    echo "    3. Удалите БД: rm -rf db"
+    echo "    2. Создайте .env с абсолютным путём:"
+    echo "       echo \"DATABASE_URL=file:$DB_ABS_PATH\" > .env"
+    echo "    3. Удалите все возможные БД: rm -rf db prisma/db prisma/custom.db"
     echo "    4. Запустите: npm run db:push"
     echo "    5. Перезапустите install.sh"
     die "Таблицы не создались в ожидаемой БД"
