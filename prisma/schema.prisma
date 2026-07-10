@@ -1,0 +1,308 @@
+// ===========================================================================
+// RK7 Analytics — Prisma Schema
+// Зеркалирует ключевые таблицы R-Keeper 7 (RK7.6) для аналитики.
+// Демо-данные хранятся в SQLite, репозитории готовы к переключению на MS SQL.
+// ===========================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Пользователи приложения (отдельно от сотрудников R-Keeper)
+// ---------------------------------------------------------------------------
+model AppUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         String   @default("MANAGER") // OWNER | MANAGER | CASHIER | ANALYST
+  restaurantId Int?     // null = доступ ко всей сети
+  createdAt    DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// RESTAURANT — справочник точек сети (R-Keeper: RESTAURANT)
+// ---------------------------------------------------------------------------
+model Restaurant {
+  sifr       Int      @id // R-Keeper Sifr (идентификатор)
+  code       String   @unique
+  name       String
+  altName    String?
+  address    String?
+  phone      String?
+  latitude   Float?
+  longitude  Float?
+  openTime   String?  // "10:00"
+  closeTime  String?  // "23:00"
+  isDark     Boolean  @default(false)
+  halls      HallPlan[]
+  shifts     Shift[]
+  visits     Visit[]
+  orders     Order[]
+  checks     PrintCheck[]
+  payments   Payment[]
+  saleItems  ItemsSaled[]
+  discounts  DiscountDetail[]
+  employees  Employee[]
+  // связь с менеджерами/кассирами косвенно через shift
+}
+
+// ---------------------------------------------------------------------------
+// HALLPLAN — план зала (R-Keeper: HALLPLANS)
+// ---------------------------------------------------------------------------
+model HallPlan {
+  sifr          Int      @id
+  restaurantId  Int
+  restaurant    Restaurant @relation(fields: [restaurantId], references: [sifr])
+  name          String
+  tables        RestaurantTable[]
+}
+
+// ---------------------------------------------------------------------------
+// RestaurantTable — столы (производная от HALLPLANS, в RK7 часть схемы зала)
+// ---------------------------------------------------------------------------
+model RestaurantTable {
+  id            Int      @id @default(autoincrement())
+  hallId        Int
+  hall          HallPlan @relation(fields: [hallId], references: [sifr])
+  number        String   // "1", "2A", "Bar-3"
+  seats         Int      @default(4)
+  visits        Visit[]
+}
+
+// ---------------------------------------------------------------------------
+// EMPLOYEE — сотрудник (R-Keeper: EMPLOYEES)
+// ---------------------------------------------------------------------------
+model Employee {
+  sifr          Int      @id
+  restaurantId  Int
+  restaurant    Restaurant @relation(fields: [restaurantId], references: [sifr])
+  code          String
+  name          String
+  position      String   // Официант, Кассир, Бармен, Шеф, Менеджер
+  // operationLog и penaltyReceipt — через строковые ID
+  shifts        Shift[]
+  awards        AwardPenalty[]
+  ordersOpened  Order[]
+}
+
+// ---------------------------------------------------------------------------
+// ROLE — должности (упрощённо)
+// ---------------------------------------------------------------------------
+model Role {
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+}
+
+// ---------------------------------------------------------------------------
+// SHIFT — смена (R-Keeper: CASHES / GLOBALSHIFTS)
+// ---------------------------------------------------------------------------
+model Shift {
+  id            Int      @id @default(autoincrement())
+  restaurantId  Int
+  restaurant    Restaurant @relation(fields: [restaurantId], references: [sifr])
+  midServerId   Int      @default(1)
+  openedAt      DateTime
+  closedAt      DateTime?
+  managerId     Int?
+  manager       Employee? @relation(fields: [managerId], references: [sifr])
+  visits        Visit[]
+  orders        Order[]
+}
+
+// ---------------------------------------------------------------------------
+// VISIT — визит гостя (R-Keeper: VISITS)
+// ---------------------------------------------------------------------------
+model Visit {
+  sifr          Int      @id
+  restaurantId  Int
+  restaurant    Restaurant @relation(fields: [restaurantId], references: [sifr])
+  visitDateTime DateTime
+  guestsCount   Int      @default(1)
+  tableId       Int?
+  table         RestaurantTable? @relation(fields: [tableId], references: [id])
+  shiftId       Int?
+  shift         Shift?   @relation(fields: [shiftId], references: [id])
+  openedAt      DateTime
+  closedAt      DateTime?
+  durationMin   Int      @default(0)
+  orders        Order[]
+}
+
+// ---------------------------------------------------------------------------
+// ORDER — заказ (R-Keeper: ORDERS)
+// ---------------------------------------------------------------------------
+model Order {
+  id            Int      @id @default(autoincrement())
+  visitSifr     Int
+  visit         Visit    @relation(fields: [visitSifr], references: [sifr])
+  restaurantId  Int
+  restaurant    Restaurant @relation(fields: [restaurantId], references: [sifr])
+  identInVisit  Int
+  openedAt      DateTime
+  closedAt      DateTime?
+  creatorId     Int?     // EMPLOYEES.Sifr (официант)
+  creator       Employee? @relation(fields: [creatorId], references: [sifr])
+  shiftId       Int?
+  shift         Shift?   @relation(fields: [shiftId], references: [id])
+  guestsCount   Int      @default(1)
+  isBanquet     Boolean  @default(false)
+  checks        PrintCheck[]
+}
+
+// ---------------------------------------------------------------------------
+// PRINTCHECK — чек (R-Keeper: PRINTCHECKS)
+// ---------------------------------------------------------------------------
+model PrintCheck {
+  uni           Int      @id @default(autoincrement())
+  orderId       Int
+  order         Order    @relation(fields: [orderId], references: [id])
+  restaurantId  Int
+  restaurant    Restaurant @relation(fields: [restaurantId], references: [sifr])
+  printTime     DateTime
+  stationId     Int      @default(1)
+  isFiscal      Boolean  @default(true)
+  fiscalDocNum  String?
+  sum           Float    // итог по чеку
+  discountSum   Float    @default(0)
+  items         ItemsSaled[]
+  payments      Payment[]
+  discounts     DiscountDetail[]
+}
+
+// ---------------------------------------------------------------------------
+// DISH — блюдо/товар (R-Keeper: MENUITEMS, DISHES)
+// ---------------------------------------------------------------------------
+model Dish {
+  sifr          Int      @id
+  code          String   @unique
+  name          String
+  altName       String?
+  category      String   // Группа: Горячее, Супы, Напитки, Десерты, ...
+  cuisine       String?  // Русская, Итальянская, Японская ...
+  isAlcohol     Boolean  @default(false)
+  price         Float    // текущая цена (PRICES)
+  costPrice     Float    // себестоимость (StoreHouse)
+  unit          String   @default("шт")
+  saleItems     ItemsSaled[]
+}
+
+// ---------------------------------------------------------------------------
+// ITEMSSALED — проданные позиции (R-Keeper: ITEMSSALED / SALEDATAS)
+// ---------------------------------------------------------------------------
+model ItemsSaled {
+  id            Int      @id @default(autoincrement())
+  checkUni      Int
+  check         PrintCheck @relation(fields: [checkUni], references: [uni])
+  restaurantId  Int
+  restaurant    Restaurant @relation(fields: [restaurantId], references: [sifr])
+  dishId        Int
+  dish          Dish     @relation(fields: [dishId], references: [sifr])
+  quantity      Float
+  price         Float    // цена за единицу
+  sum           Float    // quantity * price
+  discountSum   Float    @default(0)
+  costSum       Float    @default(0) // себестоимость позиции
+  stationId     Int      @default(1)
+  soldAt        DateTime
+}
+
+// ---------------------------------------------------------------------------
+// PAYMENT — оплата (R-Keeper: PAYMENTS)
+// ---------------------------------------------------------------------------
+model Payment {
+  id            Int      @id @default(autoincrement())
+  checkUni      Int
+  check         PrintCheck @relation(fields: [checkUni], references: [uni])
+  restaurantId  Int
+  restaurant    Restaurant @relation(fields: [restaurantId], references: [sifr])
+  type          String   // CASH | CARD | QR | GIFT | BONUS | INVOICE
+  typeName      String   // Наличные | Картой | QR-код | ...
+  amount        Float
+  tipAmount     Float    @default(0)
+  currencyCode  String   @default("RUB")
+  paidAt        DateTime
+}
+
+// ---------------------------------------------------------------------------
+// DISCOUNT — справочник скидок (R-Keeper: DISCOUNTS)
+// ---------------------------------------------------------------------------
+model Discount {
+  sifr          Int      @id
+  code          String   @unique
+  name          String
+  kind          String   // PERCENT | SUM | BONUS | LOYALTY
+  value         Float    // 10 (%), 500 (₽), ...
+  isActive      Boolean  @default(true)
+  details       DiscountDetail[]
+}
+
+// ---------------------------------------------------------------------------
+// DISCOUNTDETAIL — применение скидки в чеке (R-Keeper: DISCOUNTDETAILS)
+// ---------------------------------------------------------------------------
+model DiscountDetail {
+  id            Int      @id @default(autoincrement())
+  checkUni      Int
+  check         PrintCheck @relation(fields: [checkUni], references: [uni])
+  restaurantId  Int
+  restaurant    Restaurant @relation(fields: [restaurantId], references: [sifr])
+  discountSifr  Int
+  discount      Discount @relation(fields: [discountSifr], references: [sifr])
+  sum           Float    // сумма скидки
+  cardNumber    String?  // для лояльности
+  appliedAt     DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// TAXRATE — налоговая ставка (R-Keeper: TAXRATE / TAXPAYTYPE)
+// ---------------------------------------------------------------------------
+model TaxRate {
+  sifr          Int      @id
+  code          String   @unique
+  name          String   // "НДС 20%", "Без НДС", "НДС 10%"
+  percent       Float    // 20.0, 0, 10.0
+  isFiscal      Boolean  @default(true)
+}
+
+// ---------------------------------------------------------------------------
+// AWARDSPENALTY — штрафы/премии сотрудников (R-Keeper: AWARDSPENALTIESDATA)
+// ---------------------------------------------------------------------------
+model AwardPenalty {
+  id            Int      @id @default(autoincrement())
+  employeeId    Int
+  employee      Employee @relation(fields: [employeeId], references: [sifr])
+  type          String   // AWARD | PENALTY
+  reason        String
+  amount        Float    // ₽ (для премии +, для штрафа -)
+  createdAt     DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// CURRENCY — справочник валют (R-Keeper: CURRENCY)
+// ---------------------------------------------------------------------------
+model Currency {
+  sifr          Int      @id
+  code          String   @unique
+  name          String
+  symbol        String
+  rate          Float    @default(1.0)
+}
+
+// ---------------------------------------------------------------------------
+// OPERATIONLOG — журнал операций (упрощённо для аудита)
+// ---------------------------------------------------------------------------
+model OperationLog {
+  id            Int      @id @default(autoincrement())
+  restaurantId  Int
+  checkUni      Int?
+  kind          String   // OPEN | EDIT | VOID | REFUND | DISCOUNT | CLOSE
+  description   String
+  operatorId    Int?
+  createdAt     DateTime @default(now())
+}
