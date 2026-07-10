@@ -88,6 +88,14 @@ export function SettingsModule() {
     setTestResult(null);
     try {
       const res = await fetch("/api/settings/demo/load", { method: "POST" });
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        const hint = res.status === 404
+          ? "Роут не найден. Сделайте git pull origin main и перезапустите dev-сервер."
+          : `Сервер вернул HTML (HTTP ${res.status}). Проверьте консоль dev-сервера.`;
+        toast.error("Ошибка", { description: hint });
+        return;
+      }
       const j = await res.json();
       if (!res.ok) {
         toast.error("Ошибка загрузки демо-данных", { description: j.error || j.stderr || "См. консоль" });
@@ -99,7 +107,7 @@ export function SettingsModule() {
         setTimeout(() => refetch(), 1500);
       }
     } catch (e) {
-      toast.error("Сеть/сервер недоступен", { description: String(e) });
+      toast.error("Сеть/сервер недоступен", { description: e instanceof Error ? e.message : String(e) });
     } finally {
       setLoadingDemo(false);
     }
@@ -109,6 +117,14 @@ export function SettingsModule() {
     setClearing(true);
     try {
       const res = await fetch("/api/settings/demo/clear", { method: "POST" });
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        const hint = res.status === 404
+          ? "Роут не найден. Сделайте git pull origin main и перезапустите dev-сервер."
+          : `Сервер вернул HTML (HTTP ${res.status}). Проверьте консоль dev-сервера.`;
+        toast.error("Ошибка", { description: hint });
+        return;
+      }
       const j = await res.json();
       if (!res.ok) {
         toast.error("Ошибка очистки", { description: j.error });
@@ -118,7 +134,7 @@ export function SettingsModule() {
         setTimeout(() => refetch(), 1000);
       }
     } catch (e) {
-      toast.error("Сеть/сервер недоступен", { description: String(e) });
+      toast.error("Сеть/сервер недоступен", { description: e instanceof Error ? e.message : String(e) });
     } finally {
       setClearing(false);
     }
@@ -133,6 +149,20 @@ export function SettingsModule() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(sqlForm),
       });
+
+      // Проверяем, что ответ JSON, а не HTML (404/500 страница Next.js)
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        const text = await res.text();
+        const hint = res.status === 404
+          ? "Роут /api/settings/sql/test не найден. Сделайте git pull origin main и перезапустите dev-сервер (Ctrl+C → npm run dev)."
+          : `Сервер вернул HTML вместо JSON (HTTP ${res.status}). Возможно, ошибка компиляции — проверьте консоль dev-сервера.`;
+        setTestResult({ success: false, message: hint });
+        toast.error("Подключение не удалось", { description: hint });
+        console.error("Non-JSON response:", text.slice(0, 500));
+        return;
+      }
+
       const j = await res.json();
       if (!res.ok) {
         setTestResult({ success: false, message: j.error + (j.details ? ": " + j.details : "") });
@@ -147,7 +177,12 @@ export function SettingsModule() {
         toast.success("Подключение успешно", { description: `${j.connectMs} мс` });
       }
     } catch (e) {
-      setTestResult({ success: false, message: String(e) });
+      const msg = e instanceof Error ? e.message : String(e);
+      setTestResult({
+        success: false,
+        message: `Сетевая ошибка: ${msg}. Проверьте, что dev-сервер запущен (npm run dev).`,
+      });
+      toast.error("Сетевая ошибка", { description: msg });
     } finally {
       setTesting(false);
     }
@@ -161,6 +196,14 @@ export function SettingsModule() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(sqlForm),
       });
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        const hint = res.status === 404
+          ? "Роут не найден. Сделайте git pull origin main и перезапустите dev-сервер."
+          : `Сервер вернул HTML (HTTP ${res.status}). Проверьте консоль dev-сервера.`;
+        toast.error("Ошибка", { description: hint });
+        return;
+      }
       const j = await res.json();
       if (!res.ok) {
         toast.error("Не удалось сохранить", { description: j.error });
@@ -168,7 +211,7 @@ export function SettingsModule() {
         toast.success("Параметры сохранены", { description: "Перезапустите dev-сервер" });
       }
     } catch (e) {
-      toast.error("Сеть/сервер недоступен", { description: String(e) });
+      toast.error("Сеть/сервер недоступен", { description: e instanceof Error ? e.message : String(e) });
     } finally {
       setSaving(false);
     }
