@@ -284,12 +284,50 @@ ok "Prisma Client сгенерирован"
 # --- .env + db:push ---
 step "[6/8] НАСТРОЙКА ОКРУЖЕНИЯ И СОЗДАНИЕ БД"
 
+# ВАЖНО: .env должен содержать ОТНОСИТЕЛЬНЫЙ путь к БД, не абсолютный.
+# Если на машине уже был .env с абсолютным путем — переписываем.
 echo "DATABASE_URL=file:./db/custom.db" > .env
 ok ".env создан (DATABASE_URL=file:./db/custom.db)"
 
-info "Создание базы данных SQLite..."
+# Удаляем старую БД если была (чтобы гарантировать чистый старт)
+[ -f "db/custom.db" ] && { info "Удаляю старую БД..."; rm -f db/custom.db; }
+
+info "Создание базы данных SQLite (npm run db:push)..."
 npm run db:push || die "db:push завершился с ошибкой"
-ok "База данных создана (db/custom.db)"
+ok "Prisma сообщила о создании БД"
+
+# КРИТИЧНО: проверяем что таблицы реально создались в db/custom.db
+# (Prisma может отработать успешно, но создать БД в другом месте,
+# если в .env был абсолютный путь или путь к другому файлу)
+info "Проверка что таблицы создались в db/custom.db..."
+TABLES_COUNT=$($PYTHON_CMD -c "
+import sqlite3, os
+db_path = 'db/custom.db'
+if not os.path.exists(db_path):
+    print(0)
+else:
+    c = sqlite3.connect(db_path)
+    cnt = c.execute(\"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'\").fetchone()[0]
+    print(cnt)
+" 2>/dev/null || echo "0")
+
+if [ "$TABLES_COUNT" -lt 10 ]; then
+    err "В db/custom.db только $TABLES_COUNT таблиц (ожидалось >10)"
+    echo ""
+    echo "  Это значит, что Prisma создала БД в другом месте."
+    echo "  Проверка:"
+    echo "    - .env содержит: $(cat .env)"
+    echo "    - db/custom.db существует: $([ -f db/custom.db ] && echo 'да' || echo 'нет')"
+    echo ""
+    echo "  Решение:"
+    echo "    1. Удалите .env: rm -f .env"
+    echo "    2. Пересоздайте .env: echo 'DATABASE_URL=file:./db/custom.db' > .env"
+    echo "    3. Удалите БД: rm -rf db"
+    echo "    4. Запустите: npm run db:push"
+    echo "    5. Перезапустите install.sh"
+    die "Таблицы не создались в ожидаемой БД"
+fi
+ok "БД содержит $TABLES_COUNT таблиц — всё в порядке"
 
 # --- seed_demo.py ---
 step "[7/8] ГЕНЕРАЦИЯ ДЕМО-ДАННЫХ"

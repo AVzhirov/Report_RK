@@ -46,6 +46,63 @@ print(f"ОС: {sys.platform}")
 conn = sqlite3.connect(DB_PATH)
 c = conn.cursor()
 
+# Проверяем, что таблицы существуют в БД
+# (частая проблема: db:push не отработал или отработал на другой БД)
+print("\n=== Проверка схемы БД ===")
+existing_tables = [r[0] for r in c.execute(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+).fetchall()]
+REQUIRED_TABLES = {"AppUser", "Restaurant", "PrintCheck", "Dish", "ItemsSaled",
+                   "Payment", "Visit", "Order", "Employee", "Discount"}
+missing_tables = REQUIRED_TABLES - set(existing_tables)
+
+if missing_tables:
+    print(f"  ✗ Отсутствуют таблицы: {', '.join(sorted(missing_tables))}")
+    print(f"  Всего таблиц в БД: {len(existing_tables)}")
+    if existing_tables:
+        print(f"  Найденные таблицы: {existing_tables}")
+    print()
+    print("  Это значит, что Prisma схема не применена к БД.")
+    print("  Решение:")
+    print("    1. Проверьте .env: должно быть DATABASE_URL=file:./db/custom.db")
+    print("    2. Удалите БД: rm -rf db")
+    print("    3. Примените схему: npm run db:push")
+    print("    4. Запустите этот скрипт снова: python scripts/seed_demo.py")
+    print()
+    # Пробуем автоматически запустить db:push
+    import shutil
+    npm_cmd = shutil.which("npm")
+    if npm_cmd:
+        ans = input("  Запустить 'npm run db:push' автоматически? [Y/N]: ").strip().lower()
+        if ans == "y" or ans == "н":
+            import subprocess
+            print("  Запускаю npm run db:push...")
+            result = subprocess.run(["npm", "run", "db:push"], shell=True,
+                                    cwd=PROJECT_DIR, capture_output=True, text=True)
+            if result.returncode == 0:
+                print("  ✓ db:push завершился успешно")
+                # Перепроверяем таблицы
+                existing_tables = [r[0] for r in c.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+                ).fetchall()]
+                missing_tables = REQUIRED_TABLES - set(existing_tables)
+                if missing_tables:
+                    print(f"  ✗ Таблицы всё ещё отсутствуют после db:push: {missing_tables}")
+                    print("  Смотрите вывод db:push выше для диагностики.")
+                    sys.exit(1)
+            else:
+                print(f"  ✗ db:push завершился с ошибкой:")
+                print(result.stdout[-1500:])
+                print(result.stderr[-500:])
+                sys.exit(1)
+        else:
+            print("  Установка отменена пользователем.")
+            sys.exit(1)
+    else:
+        sys.exit(1)
+else:
+    print(f"  ✓ Все таблицы на месте ({len(existing_tables)} таблиц)")
+
 # Очищаем все таблицы перед заливкой
 print("\n=== Очистка таблиц ===")
 TABLES = [
