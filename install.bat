@@ -13,104 +13,280 @@ echo.
 echo   Этот скрипт установит аналитическую систему для ресторанов
 echo   на базе R-Keeper 7. Всё произойдёт автоматически.
 echo.
-echo   Что будет сделано:
-echo     1. Проверка зависимостей
-echo     2. Клонирование репозитория (если нужно)
-echo     3. Установка npm-пакетов
-echo     4. Создание базы данных
-echo     5. Генерация демо-данных
-echo     6. Запуск сервера
+echo   Если чего-то не хватает — скрипт спросит и сам скачает.
 echo.
 echo   Нажмите любую клавишу для начала...
 pause >nul
 
 echo.
 echo ================================================================
-echo   [1/8] ПРОВЕРКА ЗАВИСИМОСТЕЙ
+echo   [1/9] ПРОВЕРКА И УСТАНОВКА ЗАВИСИМОСТЕЙ
 echo ================================================================
 echo.
 
-REM --- Проверка Node.js ---
+REM --- Проверка winget (для автоматической установки) ---
+set HAS_WINGET=0
+where winget >nul 2>&1
+if not errorlevel 1 set HAS_WINGET=1
+if !HAS_WINGET!==1 (
+    echo   ✓ winget доступен (будет использован для автоустановки)
+) else (
+    echo   ℹ winget недоступен — буду скачивать установщики напрямую
+)
+echo.
+
+REM ============================================================
+REM --- Node.js ---
+REM ============================================================
+set NODE_OK=0
 where node >nul 2>&1
-if errorlevel 1 (
-    echo   ✗ Node.js не установлен!
-    echo.
-    echo   Скачайте с: https://nodejs.org/ru/download
-    echo   Выберите "Windows Installer" 64-bit
-    echo   При установке оставьте галочку "Add to PATH"
-    echo.
-    echo   После установки Node.js запустите этот скрипт снова.
-    echo.
-    pause
-    exit /b 1
+if not errorlevel 1 (
+    for /f "tokens=*" %%v in ('node --version') do set NODE_VER=%%v
+    echo   ✓ Node.js: !NODE_VER!
+    set NODE_OK=1
 )
-for /f "tokens=*" %%v in ('node --version') do set NODE_VER=%%v
-echo   ✓ Node.js: !NODE_VER!
 
-REM --- Проверка npm ---
-where npm >nul 2>&1
-if errorlevel 1 (
-    echo   ✗ npm не установлен (должен идти с Node.js)
+if !NODE_OK!==0 (
+    echo   ✗ Node.js не найден
     echo.
-    echo   Переустановите Node.js: https://nodejs.org/ru/download
+    echo   Node.js — это среда для запуска JavaScript. Без него проект не работает.
     echo.
-    pause
-    exit /b 1
-)
-for /f "tokens=*" %%v in ('npm --version') do set NPM_VER=%%v
-echo   ✓ npm: !NPM_VER!
-
-REM --- Проверка Git ---
-where git >nul 2>&1
-if errorlevel 1 (
-    echo   ✗ Git не установлен!
-    echo.
-    echo   Скачайте с: https://git-scm.com/download/win
-    echo   Установите с настройками по умолчанию
-    echo.
-    echo   После установки Git запустите этот скрипт снова.
-    echo.
-    pause
-    exit /b 1
-)
-for /f "tokens=*" %%v in ('git --version') do set GIT_VER=%%v
-echo   ✓ Git: !GIT_VER!
-
-REM --- Проверка Python ---
-set PYTHON_CMD=python
-where python >nul 2>&1
-if errorlevel 1 (
-    set PYTHON_CMD=py
-    where py >nul 2>&1
-    if errorlevel 1 (
-        echo   ✗ Python не установлен!
+    set /p INSTALL_NODE="Установить Node.js LTS автоматически? [Y/N]: "
+    if /i "!INSTALL_NODE!"=="Y" (
         echo.
-        echo   Скачайте с: https://www.python.org/downloads/windows/
-        echo   ВАЖНО: при установке поставьте галочку "Add Python to PATH"
+        if !HAS_WINGET!==1 (
+            echo   Устанавливаю через winget...
+            winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
+        ) else (
+            echo   Скачиваю установщик Node.js...
+            curl -L -o node-installer.msi https://nodejs.org/dist/v20.18.0/node-v20.18.0-x64.msi
+            if errorlevel 1 (
+                echo   ✗ Не удалось скачать Node.js
+                echo   Скачайте вручную: https://nodejs.org/ru/download
+                pause
+                exit /b 1
+            )
+            echo   Запускаю установщик (может появиться окно UAC — нажмите "Да")...
+            msiexec /i node-installer.msi /qb
+            del node-installer.msi
+        )
         echo.
-        echo   После установки Python запустите этот скрипт снова.
+        echo   Обновляю переменные среды...
+        REM Обновляем PATH для текущей сессии
+        set "PATH=%PATH%;C:\Program Files\nodejs"
+        set "PATH=%PATH%;%APPDATA%\npm"
+        REM Перепроверяем
+        where node >nul 2>&1
+        if errorlevel 1 (
+            echo   ⚠ Node.js установлен, но не виден в текущей сессии.
+            echo   ЗАКРОЙТЕ это окно и запустите install.bat заново — тогда PATH обновится.
+            echo.
+            pause
+            exit /b 1
+        )
+        for /f "tokens=*" %%v in ('node --version') do set NODE_VER=%%v
+        echo   ✓ Node.js установлен: !NODE_VER!
+    ) else (
+        echo.
+        echo   Без Node.js установка невозможна.
+        echo   Скачайте вручную: https://nodejs.org/ru/download
         echo.
         pause
         exit /b 1
     )
-    echo   ✓ Python: через py launcher
-) else (
-    for /f "tokens=*" %%v in ('python --version') do set PY_VER=%%v
-    echo   ✓ !PY_VER!
+)
+
+REM ============================================================
+REM --- npm (идёт с Node.js, но проверим) ---
+REM ============================================================
+set NPM_OK=0
+where npm >nul 2>&1
+if not errorlevel 1 (
+    for /f "tokens=*" %%v in ('npm --version') do set NPM_VER=%%v
+    echo   ✓ npm: !NPM_VER!
+    set NPM_OK=1
+)
+
+if !NPM_OK!==0 (
+    echo   ⚠ npm не найден, хотя Node.js установлен.
+    echo   Это часто бывает, если путь к npm не в PATH.
+    echo.
+    echo   Попробую добавить путь к npm...
+    set "PATH=%PATH%;%APPDATA%\npm"
+    where npm >nul 2>&1
+    if errorlevel 1 (
+        echo   ✗ npm всё ещё не найден.
+        echo.
+        echo   Решение: переустановите Node.js, при установке НЕ снимайте галочку "Add to PATH".
+        echo   Скачайте: https://nodejs.org/ru/download
+        echo.
+        echo   После переустановки ЗАКРОЙТЕ это окно и запустите install.bat заново.
+        echo.
+        pause
+        exit /b 1
+    )
+    for /f "tokens=*" %%v in ('npm --version') do set NPM_VER=%%v
+    echo   ✓ npm: !NPM_VER!
+)
+
+REM ============================================================
+REM --- Git ---
+REM ============================================================
+set GIT_OK=0
+where git >nul 2>&1
+if not errorlevel 1 (
+    for /f "tokens=*" %%v in ('git --version') do set GIT_VER=%%v
+    echo   ✓ Git: !GIT_VER!
+    set GIT_OK=1
+)
+
+if !GIT_OK!==0 (
+    echo   ✗ Git не найден
+    echo.
+    echo   Git нужен для скачивания проекта с GitHub.
+    echo.
+    set /p INSTALL_GIT="Установить Git автоматически? [Y/N]: "
+    if /i "!INSTALL_GIT!"=="Y" (
+        echo.
+        if !HAS_WINGET!==1 (
+            echo   Устанавливаю через winget...
+            winget install Git.Git --accept-source-agreements --accept-package-agreements
+        ) else (
+            echo   Скачиваю установщик Git...
+            curl -L -o git-installer.exe https://github.com/git-for-windows/git/releases/download/v2.45.0.windows.1/Git-2.45.0-64-bit.exe
+            if errorlevel 1 (
+                echo   ✗ Не удалось скачать Git
+                echo   Скачайте вручную: https://git-scm.com/download/win
+                pause
+                exit /b 1
+            )
+            echo   Запускаю установщик (может появиться окно UAC)...
+            git-installer.exe /VERYSILENT /NORESTART
+            del git-installer.exe
+        )
+        echo.
+        set "PATH=%PATH%;C:\Program Files\Git\cmd"
+        where git >nul 2>&1
+        if errorlevel 1 (
+            echo   ⚠ Git установлен, но не виден в текущей сессии.
+            echo   ЗАКРОЙТЕ это окно и запустите install.bat заново.
+            echo.
+            pause
+            exit /b 1
+        )
+        for /f "tokens=*" %%v in ('git --version') do set GIT_VER=%%v
+        echo   ✓ Git установлен: !GIT_VER!
+    ) else (
+        echo.
+        echo   Без Git не смогу скачать проект.
+        echo   Скачайте вручную: https://git-scm.com/download/win
+        echo.
+        echo   Альтернатива: скачайте ZIP с https://github.com/AVzhirov/Report_RK
+        echo   распакуйте и запустите install.bat из папки проекта.
+        echo.
+        pause
+        exit /b 1
+    )
+)
+
+REM ============================================================
+REM --- Python ---
+REM ============================================================
+set PYTHON_CMD=python
+set PYTHON_OK=0
+
+where python >nul 2>&1
+if not errorlevel 1 (
+    for /f "tokens=*" %%v in ('python --version 2^>^&1') do set PY_VER=%%v
+    REM Проверим, что это действительно Python, а не подделка Windows
+    echo !PY_VER! | findstr /C:"Python" >nul
+    if not errorlevel 1 (
+        echo   ✓ !PY_VER!
+        set PYTHON_OK=1
+    )
+)
+
+if !PYTHON_OK!==0 (
+    REM Пробуем py launcher
+    set PYTHON_CMD=py
+    where py >nul 2>&1
+    if not errorlevel 1 (
+        for /f "tokens=*" %%v in ('py --version 2^>^&1') do set PY_VER=%%v
+        echo !PY_VER! | findstr /C:"Python" >nul
+        if not errorlevel 1 (
+            echo   ✓ Python через py launcher: !PY_VER!
+            set PYTHON_OK=1
+        )
+    )
+)
+
+if !PYTHON_OK!==0 (
+    echo   ✗ Python не найден
+    echo.
+    echo   Python нужен для генерации демо-данных (5 ресторанов, 91k чеков).
+    echo.
+    set /p INSTALL_PY="Установить Python 3.12 автоматически? [Y/N]: "
+    if /i "!INSTALL_PY!"=="Y" (
+        echo.
+        if !HAS_WINGET!==1 (
+            echo   Устанавливаю через winget...
+            winget install Python.Python.3.12 --accept-source-agreements --accept-package-agreements
+        ) else (
+            echo   Скачиваю установщик Python...
+            curl -L -o python-installer.exe https://www.python.org/ftp/python/3.12.3/python-3.12.3-amd64.exe
+            if errorlevel 1 (
+                echo   ✗ Не удалось скачать Python
+                echo   Скачайте вручную: https://www.python.org/downloads/windows/
+                pause
+                exit /b 1
+            )
+            echo   Запускаю установщик (добавляю в PATH автоматически)...
+            python-installer.exe /quiet InstallAllUsers=0 PrependPath=1 Include_test=0
+            del python-installer.exe
+        )
+        echo.
+        set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Python\Python312"
+        set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Python\Python312\Scripts"
+        set PYTHON_CMD=python
+        where python >nul 2>&1
+        if errorlevel 1 (
+            REM Пробуем py
+            set PYTHON_CMD=py
+            where py >nul 2>&1
+            if errorlevel 1 (
+                echo   ⚠ Python установлен, но не виден в текущей сессии.
+                echo   ЗАКРОЙТЕ это окно и запустите install.bat заново.
+                echo.
+                pause
+                exit /b 1
+            )
+        )
+        for /f "tokens=*" %%v in ('!PYTHON_CMD! --version 2^>^&1') do set PY_VER=%%v
+        echo   ✓ Python установлен: !PY_VER!
+    ) else (
+        echo.
+        echo   Без Python не смогу сгенерировать демо-данные.
+        echo   Скачайте вручную: https://www.python.org/downloads/windows/
+        echo   ВАЖНО: при установке поставьте галочку "Add Python to PATH"
+        echo.
+        echo   После установки ЗАКРОЙТЕ это окно и запустите install.bat заново.
+        echo.
+        pause
+        exit /b 1
+    )
 )
 
 echo.
-echo   Все зависимости установлены. Продолжаем...
+echo   ✓ Все зависимости готовы. Продолжаем...
 
+REM ============================================================
 REM --- Определение папки проекта ---
-REM Если скрипт запущен из распакованного проекта — используем текущую папку
-REM Если нет — клонируем в подпапку Report_RK
-
+REM ============================================================
 if exist "package.json" (
     if exist ".git" (
         echo.
         echo ================================================================
-        echo   [2/8] ОБНОВЛЕНИЕ РЕПОЗИТОРИЯ
+        echo   [2/9] ОБНОВЛЕНИЕ РЕПОЗИТОРИЯ
         echo ================================================================
         echo.
         echo   Скрипт запущен из папки проекта. Обновляю...
@@ -126,7 +302,7 @@ if exist "package.json" (
         echo   ✗ Скрипт запущен не из папки проекта.
         echo.
         echo   Варианты:
-        echo     1. Скачайте этот скрипт в пустую папку и запустите — он клонирует проект
+        echo     1. Скачайте install.bat в пустую папку и запустите — он клонирует проект
         echo     2. Или распакуйте Report_RK.zip и запустите install.bat из него
         echo.
         pause
@@ -135,7 +311,7 @@ if exist "package.json" (
 ) else (
     echo.
     echo ================================================================
-    echo   [2/8] КЛОНИРОВАНИЕ РЕПОЗИТОРИЯ
+    echo   [2/9] КЛОНИРОВАНИЕ РЕПОЗИТОРИЯ
     echo ================================================================
     echo.
 
@@ -145,9 +321,9 @@ if exist "package.json" (
         echo   Папка Report_RK уже существует.
         echo.
         echo   Выберите действие:
-        echo     1) Удалить и клонировать заново (чистая установка)
-        echo     2) Обновить существующую (git pull)
-        echo     3) Выйти
+        echo     1^) Удалить и клонировать заново (чистая установка)
+        echo     2^) Обновить существующую (git pull)
+        echo     3^) Выйти
         echo.
         set /p CHOICE="Ваш выбор [1/2/3]: "
 
@@ -207,7 +383,7 @@ echo   Папка проекта: !PROJECT_DIR!
 REM --- Очистка старых артефактов ---
 echo.
 echo ================================================================
-echo   [3/8] ОЧИСТКА СТАРЫХ АРТЕФАКТОВ
+echo   [3/9] ОЧИСТКА СТАРЫХ АРТЕФАКТОВ
 echo ================================================================
 echo.
 
@@ -223,9 +399,7 @@ if exist "db" (
     echo   Удаляю db...
     rmdir /s /q "db"
 )
-if exist "package-lock.json" (
-    del /q "package-lock.json"
-)
+if exist "package-lock.json" del /q "package-lock.json"
 if exist ".env.local" (
     del /q ".env.local"
     echo   Удалён устаревший .env.local
@@ -235,7 +409,7 @@ echo   ✓ Очистка завершена
 REM --- npm install ---
 echo.
 echo ================================================================
-echo   [4/8] УСТАНОВКА NPM-ЗАВИСИМОСТЕЙ
+echo   [4/9] УСТАНОВКА NPM-ЗАВИСИМОСТЕЙ
 echo ================================================================
 echo.
 echo   Это займёт 2-5 минут. Не закрывайте окно!
@@ -259,7 +433,7 @@ echo   ✓ Зависимости установлены
 REM --- prisma generate ---
 echo.
 echo ================================================================
-echo   [5/8] ГЕНЕРАЦИЯ PRISMA CLIENT
+echo   [5/9] ГЕНЕРАЦИЯ PRISMA CLIENT
 echo ================================================================
 echo.
 
@@ -276,7 +450,7 @@ echo   ✓ Prisma Client сгенерирован
 REM --- .env ---
 echo.
 echo ================================================================
-echo   [6/8] НАСТРОЙКА ОКРУЖЕНИЯ
+echo   [6/9] НАСТРОЙКА ОКРУЖЕНИЯ
 echo ================================================================
 echo.
 
@@ -299,7 +473,7 @@ echo   ✓ База данных создана (db\custom.db)
 REM --- seed_demo.py ---
 echo.
 echo ================================================================
-echo   [7/8] ГЕНЕРАЦИЯ ДЕМО-ДАННЫХ
+echo   [7/9] ГЕНЕРАЦИЯ ДЕМО-ДАННЫХ
 echo ================================================================
 echo.
 echo   Создаю 5 ресторанов, ~91 000 чеков за 180 дней...
@@ -316,8 +490,13 @@ if errorlevel 1 (
 )
 echo   ✓ Демо-данные сгенерированы
 
+REM --- fix_dates.py ---
 echo.
-echo   Исправляю формат дат...
+echo ================================================================
+echo   [8/9] ИСПРАВЛЕНИЕ ФОРМАТА ДАТ
+echo ================================================================
+echo.
+
 !PYTHON_CMD! scripts\fix_dates.py
 if errorlevel 1 (
     echo.
@@ -330,7 +509,7 @@ if errorlevel 1 (
 REM --- Проверка БД ---
 echo.
 echo ================================================================
-echo   [8/8] ПРОВЕРКА БАЗЫ ДАННЫХ
+echo   [9/9] ПРОВЕРКА БАЗЫ ДАННЫХ
 echo ================================================================
 echo.
 
