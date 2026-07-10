@@ -8,9 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import {
-  Database, RefreshCw, Trash2, CheckCircle2, AlertTriangle, Server, Save, Plug, Wifi,
+  Database, RefreshCw, Trash2, CheckCircle2, AlertTriangle, Server, Save, Plug, Wifi, X,
 } from "lucide-react";
 import { toast } from "sonner";
+
+const SQL_FORM_STORAGE_KEY = "rk7-sql-form";
 
 interface StatusData {
   counts: {
@@ -69,19 +71,60 @@ export function SettingsModule() {
   const [clearing, setClearing] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
-  // MS SQL форма
-  const [sqlForm, setSqlForm] = useState({
-    server: "192.168.1.100",
+  // MS SQL форма — загружаем сохранённые параметры из localStorage
+  const DEFAULT_SQL_FORM = {
+    server: "",
     port: 1433,
     database: "RK7",
     user: "sa",
     password: "",
     encrypt: false,
     trustServerCertificate: true,
-  });
+  };
+
+  function loadSqlFormFromStorage() {
+    if (typeof window === "undefined") return DEFAULT_SQL_FORM;
+    try {
+      const saved = localStorage.getItem(SQL_FORM_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return { ...DEFAULT_SQL_FORM, ...parsed };
+      }
+    } catch (e) {
+      console.warn("Не удалось загрузить параметры MS SQL из localStorage:", e);
+    }
+    return DEFAULT_SQL_FORM;
+  }
+
+  const [sqlForm, setSqlForm] = useState(DEFAULT_SQL_FORM);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<null | { success: boolean; message: string; tables?: string[]; rk7TablesFound?: string[] }>(null);
   const [saving, setSaving] = useState(false);
+
+  // Загружаем параметры из localStorage при первом монтировании (после гидратации)
+  useEffect(() => {
+    setSqlForm(loadSqlFormFromStorage());
+  }, []);
+
+  // Сохраняем в localStorage при каждом изменении формы
+  useEffect(() => {
+    if (typeof window !== "undefined" && sqlForm.server) {
+      try {
+        localStorage.setItem(SQL_FORM_STORAGE_KEY, JSON.stringify(sqlForm));
+      } catch (e) {
+        console.warn("Не удалось сохранить параметры MS SQL в localStorage:", e);
+      }
+    }
+  }, [sqlForm]);
+
+  function clearSqlFormStorage() {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(SQL_FORM_STORAGE_KEY);
+    }
+    setSqlForm(DEFAULT_SQL_FORM);
+    setTestResult(null);
+    toast.success("Параметры MS SQL очищены из памяти браузера");
+  }
 
   async function loadDemo() {
     setLoadingDemo(true);
@@ -450,7 +493,7 @@ export function SettingsModule() {
                 {testing ? (
                   <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Проверка…</>
                 ) : (
-                  <><Plug className="w-4 h-4 mr-2" /> Проверить подключение</>
+                  <><Plug className="w-4 h-4 mr-2" /> Проверить</>
                 )}
               </Button>
               <Button onClick={saveSql} disabled={saving || !sqlForm.password}
@@ -459,9 +502,17 @@ export function SettingsModule() {
                 {saving ? (
                   <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Сохранение…</>
                 ) : (
-                  <><Save className="w-4 h-4 mr-2" /> Сохранить в .env.local</>
+                  <><Save className="w-4 h-4 mr-2" /> Сохранить</>
                 )}
               </Button>
+              <Button onClick={clearSqlFormStorage} variant="outline" size="icon"
+                title="Очистить сохранённые параметры">
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="text-xs text-muted-foreground mt-2">
+              ℹ️ Параметры сохраняются в памяти браузера и подставляются при следующем открытии.
+              Кнопка «Сохранить» дополнительно записывает их в .env.local для dev-сервера.
             </div>
           </div>
 
@@ -508,17 +559,6 @@ export function SettingsModule() {
                 )}
               </div>
             )}
-
-            <div className="mt-3 text-xs text-muted-foreground p-3 rounded" style={{ background: "var(--muted)" }}>
-              <div className="font-medium mb-1">📋 Инструкция по переключению на MS SQL:</div>
-              <ol className="list-decimal list-inside space-y-0.5">
-                <li>Установить драйвер: <code>npm install mssql</code></li>
-                <li>Заполнить форму, проверить, сохранить</li>
-                <li>Перезапустить dev-сервер (Ctrl+C → npm run dev)</li>
-                <li>Отредактировать src/lib/analytics.ts — заменить <code>db.$queryRaw</code> на вызовы через mssql</li>
-                <li>Готовые T-SQL запросы: scripts/sql/rk7_mssql_queries.sql</li>
-              </ol>
-            </div>
           </div>
         </div>
       </SectionCard>

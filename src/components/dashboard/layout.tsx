@@ -45,6 +45,8 @@ const PRESETS: { id: DatePreset; label: string }[] = [
   { id: "30d",  label: "30 дней" },
   { id: "90d",  label: "Квартал" },
   { id: "180d", label: "Полгода" },
+  { id: "365d", label: "Год" },
+  { id: "custom", label: "Свой период" },
 ];
 
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -62,7 +64,7 @@ export function DashboardLayout({
   children: React.ReactNode;
 }) {
   const { user, logout } = useAuth();
-  const { restaurantId, preset, setRestaurant, setPreset } = useFilter();
+  const { restaurantId, preset, customFrom, customTo, setRestaurant, setPreset, setCustomRange } = useFilter();
   const [restaurants, setRestaurants] = useState<{ sifr: number; name: string; code: string }[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -208,6 +210,27 @@ export function DashboardLayout({
                 ))}
               </SelectContent>
             </Select>
+
+            {/* Произвольный период — показываем только если preset=custom */}
+            {preset === "custom" && (
+              <div className="flex items-center gap-1">
+                <input
+                  type="date"
+                  className="h-9 px-2 rounded-md border bg-card text-sm"
+                  value={customFrom || ""}
+                  onChange={(e) => setCustomRange(e.target.value, customTo || e.target.value)}
+                  max={customTo || undefined}
+                />
+                <span className="text-muted-foreground text-sm">—</span>
+                <input
+                  type="date"
+                  className="h-9 px-2 rounded-md border bg-card text-sm"
+                  value={customTo || ""}
+                  onChange={(e) => setCustomRange(customFrom || e.target.value, e.target.value)}
+                  min={customFrom || undefined}
+                />
+              </div>
+            )}
           </div>
         </header>
 
