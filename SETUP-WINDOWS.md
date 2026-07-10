@@ -91,13 +91,19 @@ DATABASE_URL=file:./db/custom.db
 Set-Content -Path .env -Value "DATABASE_URL=file:./db/custom.db"
 ```
 
-#### 4. Примените схему Prisma
+#### 4. Сгенерируйте Prisma Client и примените схему
+
+⚠️ **Важно:** `prisma generate` должен идти ПЕРВЫМ — без него `@prisma/client` не инициализирован и dev-сервер упадёт с ошибкой `@prisma/client did not initialize yet`.
 
 ```powershell
+npx prisma generate
 npm run db:push
 ```
 
-Команда создаст SQLite-файл `db\custom.db` со всеми таблицами (RESTAURANT, PRINTCHECK, DISH и т.д.).
+`prisma generate` создаёт TypeScript-клиент для работы с БД (папка `node_modules\@prisma\client\`).
+Должно появиться: `✔ Generated Prisma Client (v6.19.2) to .\node_modules\@prisma\client in XXXms`
+
+`db:push` создаст SQLite-файл `db\custom.db` со всеми таблицами (RESTAURANT, PRINTCHECK, DISH и т.д.).
 Должно появиться сообщение: `🚀 Your database is now in sync with your Prisma schema.`
 
 #### 5. Сгенерируйте демо-данные
@@ -288,6 +294,21 @@ python3 scripts\seed_demo.py
 **A:** Сгенерируйте Prisma Client:
 ```powershell
 npm run db:generate
+```
+
+### Q: `@prisma/client did not initialize yet`
+**A:** Это значит, что Prisma Client не сгенерирован. Выполните:
+```powershell
+npx prisma generate
+```
+Затем перезапустите dev-сервер (Ctrl+C, потом `npm run dev` снова).
+
+Если ошибка остаётся — удалите `node_modules` и установите заново:
+```powershell
+Remove-Item -Recurse -Force node_modules
+npm install
+npx prisma generate
+npm run dev
 ```
 
 ### Q: Дашборд пустой, все KPI = 0

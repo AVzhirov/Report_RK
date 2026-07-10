@@ -108,8 +108,17 @@ if (-not (Test-Path .env)) {
     Write-OK ".env уже существует"
 }
 
-# --- Prisma db:push ----------------------------------------------------------
-Write-Step "Инициализация базы данных SQLite"
+# --- Prisma generate + db:push -----------------------------------------------
+Write-Step "Генерация Prisma Client и инициализация БД"
+
+# Важно: prisma generate должен идти ПЕРВЫМ — иначе @prisma/client не инициализирован
+npx prisma generate 2>&1 | Out-Null
+if (-not $?) {
+    Write-Err "prisma generate завершился с ошибкой"
+    Write-Host "  Попробуйте вручную: npx prisma generate" -ForegroundColor Yellow
+    exit 1
+}
+Write-OK "Prisma Client сгенерирован"
 
 npm run db:push 2>&1 | Out-Null
 if (-not $?) {
