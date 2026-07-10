@@ -8,19 +8,21 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   UtensilsCrossed, LayoutDashboard, TrendingUp, UtensilsCrossed as MenuIcon,
   Percent, Users, LayoutGrid, CreditCard, Receipt, LineChart, LogOut,
-  ChevronDown, Store,
+  ChevronDown, Store, Settings as SettingsIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type ModuleId =
   | "overview" | "sales" | "menu" | "discounts" | "staff"
-  | "hall" | "payments" | "fiscal" | "forecast";
+  | "hall" | "payments" | "fiscal" | "forecast" | "settings";
 
 interface ModuleMeta {
   id: ModuleId;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   desc: string;
+  /** Роли, которым доступен модуль. Если undefined — всем. */
+  roles?: UserRole[];
 }
 
 export const MODULES: ModuleMeta[] = [
@@ -33,6 +35,8 @@ export const MODULES: ModuleMeta[] = [
   { id: "payments",  label: "Платежи",       icon: CreditCard,      desc: "Наличные/карта/QR, чаевые" },
   { id: "fiscal",    label: "Налоги/Фискал", icon: Receipt,         desc: "НДС, аудит операций" },
   { id: "forecast",  label: "Прогноз",       icon: LineChart,       desc: "Прогноз выручки, аномалии" },
+  { id: "settings",  label: "Настройки",     icon: SettingsIcon,    desc: "БД, демо-данные, MS SQL, сеть",
+    roles: ["OWNER", "MANAGER"] },
 ];
 
 const PRESETS: { id: DatePreset; label: string }[] = [
@@ -67,7 +71,15 @@ export function DashboardLayout({
     fetch("/api/analytics?module=restaurants").then(r => r.json()).then(setRestaurants).catch(() => {});
   }, []);
 
-  const accessibleModules = MODULES.filter((m) => canAccess(user?.role || "CASHIER", m.id));
+  // Фильтрация модулей:
+  // 1) canAccess проверяет базовый доступ по ROLE_PERMISSIONS
+  // 2) если у модуля указан roles[] — роль должна быть в списке
+  const userRole = user?.role || "CASHIER";
+  const accessibleModules = MODULES.filter((m) => {
+    if (!canAccess(userRole, m.id)) return false;
+    if (m.roles && !m.roles.includes(userRole)) return false;
+    return true;
+  });
 
   const initials = user?.name?.split(" ").map(w => w[0]).slice(0, 2).join("") || "?";
 
