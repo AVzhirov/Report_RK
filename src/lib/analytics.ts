@@ -138,12 +138,7 @@ export async function getOverviewKpi(filter: AnalyticsFilter) {
       LEFT JOIN VISITS v  ON v.SIFR = pc.VISIT AND v.MIDSERVER = pc.MIDSERVER
       LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
         AND p.ORDERIDENT = pc.ORDERIDENT AND p.PRINTCHECKUNI = pc.UNI
-      LEFT JOIN (
-        SELECT DISTINCT CASHGROUP AS MIDSERVER, RESTAURANT
-        FROM CASHES
-        WHERE RESTAURANT IS NOT NULL
-          AND (DBSTATUS IS NULL OR DBSTATUS <> -1)
-      ) cgr ON cgr.MIDSERVER = pc.MIDSERVER
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
@@ -234,12 +229,7 @@ export async function getSalesDaily(filter: AnalyticsFilter) {
         COUNT(*)                                AS checks,
         COALESCE(SUM(pc.DISCOUNTSUM), 0)        AS discount
       FROM PRINTCHECKS pc
-      LEFT JOIN (
-        SELECT DISTINCT CASHGROUP AS MIDSERVER, RESTAURANT
-        FROM CASHES
-        WHERE RESTAURANT IS NOT NULL
-          AND (DBSTATUS IS NULL OR DBSTATUS <> -1)
-      ) cgr ON cgr.MIDSERVER = pc.MIDSERVER
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
@@ -297,18 +287,10 @@ export async function getSalesByRestaurant(filter: AnalyticsFilter) {
         COUNT(*)                               AS checks,
         COALESCE(SUM(pc.DISCOUNTSUM), 0)       AS discount
       FROM RESTAURANTS r
-      LEFT JOIN (
-        SELECT cgr.RESTAURANT, pc.BASICSUM, pc.DISCOUNTSUM, pc.CLOSEDATETIME, pc.DBSTATUS
-        FROM PRINTCHECKS pc
-        LEFT JOIN (
-          SELECT DISTINCT CASHGROUP AS MIDSERVER, RESTAURANT
-          FROM CASHES
-          WHERE RESTAURANT IS NOT NULL
-            AND (DBSTATUS IS NULL OR DBSTATUS <> -1)
-        ) cgr ON cgr.MIDSERVER = pc.MIDSERVER
-      ) pc ON pc.RESTAURANT = r.SIFR
+      LEFT JOIN PRINTCHECKS pc ON 1=1
         AND pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER AND cgr.RESTAURANT = r.SIFR
       WHERE r.DBSTATUS IS NULL OR r.DBSTATUS <> -1
       GROUP BY r.SIFR, r.NAME, r.CODE
       ORDER BY r.SIFR
@@ -362,12 +344,7 @@ export async function getSalesHourly(filter: AnalyticsFilter) {
         DATEPART(HOUR, pc.CLOSEDATETIME)        AS hour,
         SUM(pc.BASICSUM)                        AS revenue
       FROM PRINTCHECKS pc
-      LEFT JOIN (
-        SELECT DISTINCT CASHGROUP AS MIDSERVER, RESTAURANT
-        FROM CASHES
-        WHERE RESTAURANT IS NOT NULL
-          AND (DBSTATUS IS NULL OR DBSTATUS <> -1)
-      ) cgr ON cgr.MIDSERVER = pc.MIDSERVER
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
@@ -484,12 +461,7 @@ export async function getMenuAbc(filter: AnalyticsFilter): Promise<MenuAbcRow[]>
       FROM SESSIONDISHES s
       JOIN MENUITEMS d ON d.SIFR = s.SIFR
       LEFT JOIN CATEGLIST c ON c.SIFR = d.PARENT
-      LEFT JOIN (
-        SELECT DISTINCT CASHGROUP AS MIDSERVER, RESTAURANT
-        FROM CASHES
-        WHERE RESTAURANT IS NOT NULL
-          AND (DBSTATUS IS NULL OR DBSTATUS <> -1)
-      ) cgr ON cgr.MIDSERVER = s.MIDSERVER
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = s.MIDSERVER
       WHERE s.CREATIONDATETIME >= @from AND s.CREATIONDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (s.DBSTATUS IS NULL OR s.DBSTATUS <> -1)
@@ -590,12 +562,7 @@ export async function getDiscountsSummary(filter: AnalyticsFilter) {
         COUNT(*)                                     AS totalChecks,
         SUM(CASE WHEN pc.DISCOUNTSUM > 0 THEN 1 ELSE 0 END) AS checksWithDiscount
       FROM PRINTCHECKS pc
-      LEFT JOIN (
-        SELECT DISTINCT CASHGROUP AS MIDSERVER, RESTAURANT
-        FROM CASHES
-        WHERE RESTAURANT IS NOT NULL
-          AND (DBSTATUS IS NULL OR DBSTATUS <> -1)
-      ) cgr ON cgr.MIDSERVER = pc.MIDSERVER
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
@@ -727,12 +694,7 @@ export async function getStaffPerformance(filter: AnalyticsFilter) {
       JOIN EMPLOYEES e ON e.SIFR = o.ICREATOR
       LEFT JOIN PRINTCHECKS pc ON pc.VISIT = o.VISIT AND pc.MIDSERVER = o.MIDSERVER AND pc.ORDERIDENT = o.IDENTINVISIT
       LEFT JOIN VISITS v ON v.SIFR = o.VISIT AND v.MIDSERVER = o.MIDSERVER
-      LEFT JOIN (
-        SELECT DISTINCT CASHGROUP AS MIDSERVER, RESTAURANT
-        FROM CASHES
-        WHERE RESTAURANT IS NOT NULL
-          AND (DBSTATUS IS NULL OR DBSTATUS <> -1)
-      ) cgr ON cgr.MIDSERVER = o.MIDSERVER
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = o.MIDSERVER
       WHERE o.OPENTIME >= @from AND o.OPENTIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND o.ICREATOR IS NOT NULL
@@ -868,12 +830,7 @@ export async function getHallHeatmap(filter: AnalyticsFilter) {
         COUNT(*)                            AS visits,
         SUM(v.GUESTCNT)                    AS guests
       FROM VISITS v
-      LEFT JOIN (
-        SELECT DISTINCT CASHGROUP AS MIDSERVER, RESTAURANT
-        FROM CASHES
-        WHERE RESTAURANT IS NOT NULL
-          AND (DBSTATUS IS NULL OR DBSTATUS <> -1)
-      ) cgr ON cgr.MIDSERVER = v.MIDSERVER
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = v.MIDSERVER
       WHERE v.STARTTIME >= @from AND v.STARTTIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (v.DBSTATUS IS NULL OR v.DBSTATUS <> -1)
@@ -896,12 +853,7 @@ export async function getHallHeatmap(filter: AnalyticsFilter) {
         COALESCE(SUM(DATEDIFF(MINUTE, v.STARTTIME, v.QUITTIME)), 0) AS totalDuration,
         (SELECT COUNT(*) FROM HALLPLANS WHERE DBSTATUS IS NULL OR DBSTATUS <> -1) AS totalTables
       FROM VISITS v
-      LEFT JOIN (
-        SELECT DISTINCT CASHGROUP AS MIDSERVER, RESTAURANT
-        FROM CASHES
-        WHERE RESTAURANT IS NOT NULL
-          AND (DBSTATUS IS NULL OR DBSTATUS <> -1)
-      ) cgr ON cgr.MIDSERVER = v.MIDSERVER
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = v.MIDSERVER
       WHERE v.STARTTIME >= @from AND v.STARTTIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (v.DBSTATUS IS NULL OR v.DBSTATUS <> -1)
@@ -924,12 +876,7 @@ export async function getHallHeatmap(filter: AnalyticsFilter) {
       FROM ORDERS o
       JOIN VISITS v ON v.SIFR = o.VISIT AND v.MIDSERVER = o.MIDSERVER
       LEFT JOIN HALLPLANS h ON h.SIFR = o.TABLEID
-      LEFT JOIN (
-        SELECT DISTINCT CASHGROUP AS MIDSERVER, RESTAURANT
-        FROM CASHES
-        WHERE RESTAURANT IS NOT NULL
-          AND (DBSTATUS IS NULL OR DBSTATUS <> -1)
-      ) cgr ON cgr.MIDSERVER = o.MIDSERVER
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = o.MIDSERVER
       WHERE o.OPENTIME >= @from AND o.OPENTIME <= @to
         AND o.TABLEID IS NOT NULL
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
@@ -1056,12 +1003,7 @@ export async function getPaymentsSummary(filter: AnalyticsFilter) {
       FROM PAYMENTS p
       JOIN PRINTCHECKS pc ON pc.VISIT = p.VISIT AND pc.MIDSERVER = p.MIDSERVER
         AND pc.ORDERIDENT = p.ORDERIDENT AND pc.UNI = p.PRINTCHECKUNI
-      LEFT JOIN (
-        SELECT DISTINCT CASHGROUP AS MIDSERVER, RESTAURANT
-        FROM CASHES
-        WHERE RESTAURANT IS NOT NULL
-          AND (DBSTATUS IS NULL OR DBSTATUS <> -1)
-      ) cgr ON cgr.MIDSERVER = p.MIDSERVER
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = p.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (p.DBSTATUS IS NULL OR p.DBSTATUS <> -1)
@@ -1143,12 +1085,7 @@ export async function getFiscalSummary(filter: AnalyticsFilter) {
         COALESCE(SUM(pc.BASICSUM - pc.TAXSUM), 0)   AS vatBase20,
         0                                            AS vatBase0
       FROM PRINTCHECKS pc
-      LEFT JOIN (
-        SELECT DISTINCT CASHGROUP AS MIDSERVER, RESTAURANT
-        FROM CASHES
-        WHERE RESTAURANT IS NOT NULL
-          AND (DBSTATUS IS NULL OR DBSTATUS <> -1)
-      ) cgr ON cgr.MIDSERVER = pc.MIDSERVER
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
@@ -1173,12 +1110,7 @@ export async function getFiscalSummary(filter: AnalyticsFilter) {
         pc.CLOSEDATETIME AS createdAt,
         pc.ICREATOR AS operatorId
       FROM PRINTCHECKS pc
-      LEFT JOIN (
-        SELECT DISTINCT CASHGROUP AS MIDSERVER, RESTAURANT
-        FROM CASHES
-        WHERE RESTAURANT IS NOT NULL
-          AND (DBSTATUS IS NULL OR DBSTATUS <> -1)
-      ) cgr ON cgr.MIDSERVER = pc.MIDSERVER
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
