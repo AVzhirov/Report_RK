@@ -280,14 +280,17 @@ export async function getSalesByRestaurant(filter: AnalyticsFilter) {
         r.SIFR AS sifr,
         r.NAME AS name,
         CAST(r.CODE AS NVARCHAR(50)) AS code,
-        COALESCE(SUM(pc.BASICSUM), 0)         AS revenue,
-        COUNT(*)                               AS checks,
-        COALESCE(SUM(pc.DISCOUNTSUM), 0)       AS discount
+        COALESCE(SUM(x.BASICSUM), 0)         AS revenue,
+        COUNT(x.BASICSUM)                     AS checks,
+        COALESCE(SUM(x.DISCOUNTSUM), 0)       AS discount
       FROM RESTAURANTS r
-      LEFT JOIN PRINTCHECKS pc ON 1=1
-        AND pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
-        AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
-      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER AND cgr.RESTAURANT = r.SIFR
+      LEFT JOIN (
+        SELECT cgr.RESTAURANT AS restId, pc.BASICSUM, pc.DISCOUNTSUM
+        FROM PRINTCHECKS pc
+        JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
+        WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
+          AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
+      ) x ON x.restId = r.SIFR
       GROUP BY r.SIFR, r.NAME, r.CODE
       ORDER BY r.SIFR
     `, {
@@ -709,21 +712,25 @@ export async function getStaffPerformance(filter: AnalyticsFilter) {
       restaurantId: filter.restaurantId || null,
     });
 
-    // Штрафы/премии — AWARDSPENALTIESDATA
+    // Штрафы/премии — AWARDSPENALTIESDATA (накопительная, имеет DBSTATUS и MIDSERVER)
     const awardRows = await query<{
       employeeId: number; awards: number; penalties: number; net: number;
     }>(`
       SELECT
-        OPERATOR AS employeeId,
-        SUM(CASE WHEN AMOUNT >= 0 THEN 1 ELSE 0 END) AS awards,
-        SUM(CASE WHEN AMOUNT < 0 THEN 1 ELSE 0 END)  AS penalties,
-        SUM(AMOUNT) AS net
-      FROM AWARDSPENALTIESDATA
-      WHERE DATETIME >= @from AND DATETIME <= @to
-      GROUP BY OPERATOR
+        ap.OPERATOR AS employeeId,
+        SUM(CASE WHEN ap.AMOUNT >= 0 THEN 1 ELSE 0 END) AS awards,
+        SUM(CASE WHEN ap.AMOUNT < 0 THEN 1 ELSE 0 END)  AS penalties,
+        SUM(ap.AMOUNT) AS net
+      FROM AWARDSPENALTIESDATA ap
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = ap.MIDSERVER
+      WHERE ap.DATETIME >= @from AND ap.DATETIME <= @to
+        AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
+        AND (ap.DBSTATUS IS NULL OR ap.DBSTATUS <> -1)
+      GROUP BY ap.OPERATOR
     `, {
       from: filter.from,
       to: filter.to,
+      restaurantId: filter.restaurantId || null,
     });
     const awardMap = new Map<number, { awards: number; penalties: number; net: number }>();
     for (const a of awardRows) {
@@ -876,7 +883,9 @@ export async function getHallHeatmap(filter: AnalyticsFilter) {
         SUM(v.GUESTCNT) AS guests
       FROM ORDERS o
       JOIN VISITS v ON v.SIFR = o.VISIT AND v.MIDSERVER = o.MIDSERVER
-      LEFT JOIN HALLPLANS h ON h.SIFR = o.TABLEID
+      LEFT JOIN TABLES t ON t.SIFR = o.TABLEID
+      LEFT JOIN HALLPLANITEMS hpi ON hpi.TABLE = t.SIFR
+      LEFT JOIN HALLPLANS h ON h.SIFR = hpi.HALLPLAN
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = o.MIDSERVER
       WHERE o.OPENTIME >= @from AND o.OPENTIME <= @to
         AND o.TABLEID IS NOT NULL
