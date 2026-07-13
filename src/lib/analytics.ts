@@ -784,19 +784,25 @@ export async function getStaffPerformance(filter: AnalyticsFilter) {
         e.NAME          AS name,
         ''              AS position,
         0               AS restaurantId,
-        COALESCE(SUM(pc.BASICSUM), 0)         AS revenue,
+        COALESCE(SUM(p.BASICSUM), 0)          AS revenue,
         COUNT(DISTINCT o.IDENTINVISIT)         AS orders,
         COALESCE(SUM(v.GUESTCNT), 0)          AS guests,
         COALESCE(SUM(pc.DISCOUNTSUM), 0)       AS discount
       FROM ORDERS o
-      JOIN EMPLOYEES e ON e.SIFR = o.ICREATOR
+      JOIN EMPLOYEES e ON e.SIFR = o.MAINWAITER
       LEFT JOIN PRINTCHECKS pc ON pc.VISIT = o.VISIT AND pc.MIDSERVER = o.MIDSERVER AND pc.ORDERIDENT = o.IDENTINVISIT
+      LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
+        AND p.ORDERIDENT = pc.ORDERIDENT AND p.PRINTCHECKUNI = pc.UNI
+        AND p.STATE = 6 AND p.IGNOREINREP = 0
+        AND (p.SHOWINREP IS NULL OR p.SHOWINREP BETWEEN 0 AND 2)
       LEFT JOIN VISITS v ON v.SIFR = o.VISIT AND v.MIDSERVER = o.MIDSERVER
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = o.MIDSERVER
       WHERE o.OPENTIME >= @from AND o.OPENTIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
-        AND o.ICREATOR IS NOT NULL
+        AND o.MAINWAITER IS NOT NULL
         AND (o.DBSTATUS IS NULL OR o.DBSTATUS <> -1)
+        AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
+        AND (pc.DELETED IS NULL OR pc.DELETED = 0)
       GROUP BY e.SIFR, e.NAME
       ORDER BY revenue DESC
     `, {
@@ -1179,7 +1185,7 @@ export async function getPaymentsSummary(filter: AnalyticsFilter) {
 
 export async function getPaymentsByCurrency(filter: AnalyticsFilter) {
   if (isMssqlEnabled()) {
-    // PAYMENTS.CURRLINEUNI → CURRLINES.UNI → CURRLINES.SIFR → CURRENCIES.SIFR → NAME
+    // По официальному запросу RK7: PAYMENTS.SIFR → CURRENCIES.SIFR (напрямую)
     // PAYMENTS.BASICSUM — в базовой валюте
     // PAYMENTS.CURRLINESUM — в валюте платежа
     const rows = await query<{
@@ -1193,15 +1199,17 @@ export async function getPaymentsByCurrency(filter: AnalyticsFilter) {
         SUM(p.CURRLINESUM)              AS currAmount,
         COUNT(*)                        AS count
       FROM PAYMENTS p
-      JOIN PRINTCHECKS pc ON pc.VISIT = p.VISIT AND pc.MIDSERVER = p.MIDSERVER
-        AND pc.ORDERIDENT = p.ORDERIDENT AND pc.UNI = p.PRINTCHECKUNI
+      JOIN ORDERSESSIONS os ON os.VISIT = p.VISIT AND os.MIDSERVER = p.MIDSERVER AND os.UNI = p.SESSIONUNI
+      JOIN ORDERS o ON o.VISIT = os.VISIT AND o.MIDSERVER = os.MIDSERVER AND o.IDENTINVISIT = os.ORDERIDENT
+      JOIN GLOBALSHIFTS gs ON gs.MIDSERVER = o.MIDSERVER AND gs.SHIFTNUM = o.ICOMMONSHIFT AND gs.STATUS = 3
       LEFT JOIN CURRLINES cl ON cl.VISIT = p.VISIT AND cl.MIDSERVER = p.MIDSERVER AND cl.UNI = p.CURRLINEUNI
-      LEFT JOIN CURRENCIES cur ON cur.SIFR = cl.SIFR
+      LEFT JOIN PRINTCHECKS pc ON pc.VISIT = cl.VISIT AND pc.MIDSERVER = cl.MIDSERVER AND pc.UNI = cl.CHECKUNI
+      LEFT JOIN CURRENCIES cur ON cur.SIFR = p.SIFR
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = p.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND p.STATE = 6 AND p.IGNOREINREP = 0
-        AND (p.SHOWINREP IS NULL OR p.SHOWINREP BETWEEN 0 AND 2)
+        AND p.SHOWINREP BETWEEN 0 AND 2
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
       GROUP BY cur.NAME, cur.CODE
