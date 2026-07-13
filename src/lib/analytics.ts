@@ -421,6 +421,58 @@ export async function getSalesByDow(filter: AnalyticsFilter) {
 }
 
 // ---------------------------------------------------------------------------
+// ПРОДАЖИ — по категориям заказа (UOT = Unchangeable Order Types)
+// ---------------------------------------------------------------------------
+
+export async function getSalesByOrderCategory(filter: AnalyticsFilter) {
+  if (isMssqlEnabled()) {
+    // ORDERS.UOT → UNCHANGEABLEORDERTYPES.SIFR → NAME
+    const rows = await query<{
+      category: string; revenue: number; checks: number; guests: number; discount: number;
+    }>(`
+      SELECT
+        COALESCE(uot.NAME, 'Без категории')  AS category,
+        SUM(p.BASICSUM)                       AS revenue,
+        COUNT(DISTINCT CONCAT(pc.VISIT, '_', pc.MIDSERVER, '_', pc.ORDERIDENT, '_', pc.UNI)) AS checks,
+        COALESCE(SUM(CASE WHEN pc.PARENTCHECKNUM = 0 OR pc.PARENTCHECKNUM IS NULL
+                          THEN pc.GUESTCNT ELSE 0 END), 0) AS guests,
+        COALESCE(SUM(pc.DISCOUNTSUM), 0)     AS discount
+      FROM PRINTCHECKS pc
+      JOIN ORDERS o ON o.VISIT = pc.VISIT AND o.MIDSERVER = pc.MIDSERVER AND o.IDENTINVISIT = pc.ORDERIDENT
+      LEFT JOIN UNCHANGEABLEORDERTYPES uot ON uot.SIFR = o.UOT
+      LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
+        AND p.ORDERIDENT = pc.ORDERIDENT AND p.PRINTCHECKUNI = pc.UNI
+        AND p.STATE = 6 AND p.IGNOREINREP = 0
+        AND (p.SHOWINREP IS NULL OR p.SHOWINREP BETWEEN 0 AND 2)
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
+      WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
+        AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
+        AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
+        AND (pc.DELETED IS NULL OR pc.DELETED = 0)
+      GROUP BY uot.NAME
+      ORDER BY revenue DESC
+    `, {
+      from: filter.from,
+      to: filter.to,
+      restaurantId: filter.restaurantId || null,
+    });
+    const totalRevenue = rows.reduce((s, r) => s + Number(r.revenue), 0);
+    return rows.map(r => ({
+      category: r.category,
+      revenue: Math.round(Number(r.revenue) * 100) / 100,
+      checks: Number(r.checks),
+      guests: Number(r.guests),
+      discount: Math.round(Number(r.discount) * 100) / 100,
+      avgCheck: r.checks > 0 ? Math.round((Number(r.revenue) / Number(r.checks)) * 100) / 100 : 0,
+      share: totalRevenue > 0 ? Math.round((Number(r.revenue) / totalRevenue) * 1000) / 10 : 0,
+    }));
+  }
+
+  // SQLite fallback
+  return [];
+}
+
+// ---------------------------------------------------------------------------
 // МЕНЮ ABC
 // ---------------------------------------------------------------------------
 

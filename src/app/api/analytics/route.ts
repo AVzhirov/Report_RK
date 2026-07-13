@@ -6,6 +6,7 @@ import {
   getSalesByRestaurant,
   getSalesHourly,
   getSalesByDow,
+  getSalesByOrderCategory,
   getMenuAbc,
   getMenuByCategory,
   getDiscountsSummary,
@@ -73,6 +74,8 @@ export async function GET(req: NextRequest) {
         return NextResponse.json(await getSalesHourly(filter));
       case "sales-dow":
         return NextResponse.json(await getSalesByDow(filter));
+      case "sales-order-category":
+        return NextResponse.json(await getSalesByOrderCategory(filter));
       case "menu-abc":
         return NextResponse.json(await getMenuAbc(filter));
       case "menu-category":

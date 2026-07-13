@@ -12,6 +12,10 @@ interface Daily { date: string; revenue: number; checks: number; discount: numbe
 interface ByRest { sifr: number; code: string; name: string; revenue: number; checks: number; discount: number; avgCheck: number; }
 interface Dow { label: string; revenue: number; dayIndex: number; }
 type Hourly = number[][];
+interface OrderCat {
+  category: string; revenue: number; checks: number; guests: number;
+  discount: number; avgCheck: number; share: number;
+}
 
 const CHART_COLORS = ["#6B1218", "#C9A24B", "#8C2530", "#2A5C3D", "#B5651D", "#4A2C5A", "#D9534F"];
 
@@ -20,6 +24,7 @@ export function SalesModule() {
   const { data: byRest, loading: rLoading } = useAnalytics<ByRest[]>("sales-by-restaurant");
   const { data: dow, loading: dowLoading } = useAnalytics<Dow[]>("sales-dow");
   const { data: hourly, loading: hLoading } = useAnalytics<Hourly>("sales-hourly");
+  const { data: orderCats, loading: ocLoading } = useAnalytics<OrderCat[]>("sales-order-category");
 
   const totalRev = daily?.reduce((s, d) => s + d.revenue, 0) || 0;
   const totalChecks = daily?.reduce((s, d) => s + d.checks, 0) || 0;
@@ -118,6 +123,56 @@ export function SalesModule() {
           )}
         </SectionCard>
       </div>
+
+      {/* Категории заказа */}
+      <SectionCard title="Категории заказа" subtitle="Выручка по типам заказа: зал, доставка, навынос, банкеты и т.д."
+        action={<ExportButton data={orderCats as unknown as Record<string, unknown>[]} filename="order-categories" />}>
+        {ocLoading || !orderCats ? <LoadingBlock /> : orderCats.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground text-sm">Нет данных</div>
+        ) : (
+          <div className="grid lg:grid-cols-2 gap-5">
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie data={orderCats} dataKey="revenue" nameKey="category" cx="50%" cy="50%" outerRadius={110} innerRadius={50}
+                  label={(e: { category: string; share: number }) => `${e.category}: ${e.share}%`}>
+                  {orderCats.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ background: "#FBF6EC", border: "1px solid #C9A24B", borderRadius: 8, fontSize: 13 }}
+                  formatter={(v: number, n: string) => [formatRub(v), n]}
+                />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase text-muted-foreground border-b border-border">
+                    <th className="py-2">Категория</th>
+                    <th className="py-2 text-right">Выручка</th>
+                    <th className="py-2 text-right">Доля</th>
+                    <th className="py-2 text-right">Чеки</th>
+                    <th className="py-2 text-right">Ср. чек</th>
+                    <th className="py-2 text-right">Гостей</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orderCats.map((c) => (
+                    <tr key={c.category} className="border-b border-border/40 hover:bg-muted/30">
+                      <td className="py-2.5 font-medium">{c.category}</td>
+                      <td className="py-2.5 text-right tabular-nums font-semibold" style={{ color: "var(--bordeaux)" }}>{formatRub(c.revenue)}</td>
+                      <td className="py-2.5 text-right tabular-nums">{c.share}%</td>
+                      <td className="py-2.5 text-right tabular-nums">{formatNum(c.checks, 0)}</td>
+                      <td className="py-2.5 text-right tabular-nums">{formatRub(c.avgCheck)}</td>
+                      <td className="py-2.5 text-right tabular-nums text-muted-foreground">{formatNum(c.guests, 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </SectionCard>
 
       {/* Часовая тепловая карта */}
       <SectionCard title="Часовая heatmap выручки" subtitle="Распределение по дню недели и часу">
