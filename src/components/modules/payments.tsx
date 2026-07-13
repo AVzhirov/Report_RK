@@ -1,6 +1,7 @@
 "use client";
 import { useAnalytics, formatRub, formatNum, formatPct } from "@/lib/use-analytics";
 import { KpiCard, SectionCard, LoadingBlock, ErrorBlock } from "@/components/analytics/common";
+import { ExportButton } from "@/lib/export";
 import { CreditCard, Banknote, QrCode, Wallet } from "lucide-react";
 import {
   ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
