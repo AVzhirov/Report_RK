@@ -132,7 +132,7 @@ export async function getOverviewKpi(filter: AnalyticsFilter) {
       SELECT
         COALESCE(SUM(p.BASICSUM), 0)                                                    AS totalRevenue,
         COALESCE(SUM(pc.DISCOUNTSUM), 0)                                                AS totalDiscount,
-        COUNT(DISTINCT pc.VISIT + pc.MIDSERVER * 1000000 + pc.ORDERIDENT * 10000 + pc.UNI) AS totalChecks,
+        COUNT(DISTINCT CONCAT(pc.VISIT, '_', pc.MIDSERVER, '_', pc.ORDERIDENT, '_', pc.UNI)) AS totalChecks,
         COALESCE(SUM(CASE WHEN pc.PARENTCHECKNUM = 0 OR pc.PARENTCHECKNUM IS NULL
                           THEN pc.GUESTCNT ELSE 0 END), 0)                              AS totalGuests,
         0                                                                                 AS totalTips,
@@ -233,7 +233,7 @@ export async function getSalesDaily(filter: AnalyticsFilter) {
       SELECT
         CONVERT(date, pc.CLOSEDATETIME)         AS date,
         SUM(p.BASICSUM)                        AS revenue,
-        COUNT(DISTINCT pc.VISIT + pc.MIDSERVER * 1000000 + pc.ORDERIDENT * 10000 + pc.UNI) AS checks,
+        COUNT(DISTINCT CONCAT(pc.VISIT, '_', pc.MIDSERVER, '_', pc.ORDERIDENT, '_', pc.UNI)) AS checks,
         COALESCE(SUM(pc.DISCOUNTSUM), 0)        AS discount
       FROM PRINTCHECKS pc
       LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
@@ -302,7 +302,7 @@ export async function getSalesByRestaurant(filter: AnalyticsFilter) {
       LEFT JOIN (
         SELECT cgr.RESTAURANT AS restId,
                SUM(p.BASICSUM) AS paySum,
-               COUNT(DISTINCT pc.VISIT + pc.MIDSERVER * 1000000 + pc.ORDERIDENT * 10000 + pc.UNI) AS chkCount,
+               COUNT(DISTINCT CONCAT(pc.VISIT, '_', pc.MIDSERVER, '_', pc.ORDERIDENT, '_', pc.UNI)) AS chkCount,
                SUM(pc.DISCOUNTSUM) AS discSum
         FROM PRINTCHECKS pc
         JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
