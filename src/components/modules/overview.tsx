@@ -10,7 +10,9 @@ import {
 
 interface OverviewData {
   totalRevenue: number;
+  pricelistSum: number;
   totalDiscount: number;
+  discountPct: number;
   totalChecks: number;
   avgCheck: number;
   totalGuests: number;
@@ -23,6 +25,7 @@ interface OverviewData {
 interface SalesDaily {
   date: string;
   revenue: number;
+  pricelistSum: number;
   checks: number;
   discount: number;
   avgCheck: number;
@@ -85,18 +88,16 @@ export function OverviewModule() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard label="Выручка" value={formatRub(kpi.totalRevenue)}
-            icon={TrendingUp} hint={`${kpi.daysCount} дней в выборке`}
+          <KpiCard label="Выручка (чистая)" value={formatRub(kpi.totalRevenue)}
+            icon={TrendingUp} hint={`${kpi.daysCount} дней · после скидок`}
             delta={prev ? deltaPct(kpi.totalRevenue, prev.totalRevenue) : undefined} />
+          <KpiCard label="Выручка по прайс-листу" value={formatRub(kpi.pricelistSum || 0)}
+            icon={ShoppingBag} hint={`до скидок`} />
+          <KpiCard label="Скидки" value={formatRub(kpi.totalDiscount)}
+            icon={Percent} hint={`${kpi.discountPct || 0}% от прайс-листа`} />
           <KpiCard label="Средний чек" value={formatRub(kpi.avgCheck)}
-            icon={ShoppingBag} hint={`${formatNum(kpi.totalChecks, 0)} чеков`}
+            icon={Clock} hint={`${formatNum(kpi.totalChecks, 0)} чеков · ${formatNum(kpi.totalGuests, 0)} гостей`}
             delta={prev ? deltaPct(kpi.avgCheck, prev.avgCheck) : undefined} />
-          <KpiCard label="Гостей" value={formatNum(kpi.totalGuests, 0)}
-            icon={Users} hint={`${formatRub(kpi.revenuePerGuest)} на гостя`}
-            delta={prev ? deltaPct(kpi.totalGuests, prev.totalGuests) : undefined} />
-          <KpiCard label="Среднее время визита" value={`${Math.round(kpi.avgDuration)} мин`}
-            icon={Clock} hint={`За ${kpi.daysCount} дней`}
-            delta={prev ? deltaPct(kpi.avgDuration, prev.avgDuration) : undefined} />
         </div>
       )}
 

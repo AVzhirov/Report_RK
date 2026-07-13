@@ -125,12 +125,14 @@ export async function getOverviewKpi(filter: AnalyticsFilter) {
       restaurantId: filter.restaurantId || null,
     };
     // Официальная логика R-Keeper 7:
-    // Выручка = SUM(PAYMENTS.BASICSUM) с фильтрами STATE=6 (закрыт), IGNOREINREP=0
-    // Гости = только оригинальные чеки (PARENTCHECKNUM = CHECKNUM или PARENTCHECKNUM = 0)
-    // Скидки = PRINTCHECKS.DISCOUNTSUM (сумма скидок по чеку)
+    // PRLISTSUM — выручка по прайс-листу (до скидок)
+    // DISCOUNTSUM — сумма скидок
+    // BASICSUM (PAYMENTS) — чистая выручка (после скидок, = реально оплачено)
+    // Гости = только оригинальные чеки (PARENTCHECKNUM = 0)
     const sqlText = `
       SELECT
         COALESCE(SUM(p.BASICSUM), 0)                                                    AS totalRevenue,
+        COALESCE(SUM(pc.PRLISTSUM), 0)                                                  AS pricelistSum,
         COALESCE(SUM(pc.DISCOUNTSUM), 0)                                                AS totalDiscount,
         COUNT(DISTINCT CONCAT(pc.VISIT, '_', pc.MIDSERVER, '_', pc.ORDERIDENT, '_', pc.UNI)) AS totalChecks,
         COALESCE(SUM(CASE WHEN pc.PARENTCHECKNUM = 0 OR pc.PARENTCHECKNUM IS NULL
@@ -151,18 +153,22 @@ export async function getOverviewKpi(filter: AnalyticsFilter) {
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
     `;
     const r = await queryOne<{
-      totalRevenue: number; totalDiscount: number; totalChecks: number;
+      totalRevenue: number; pricelistSum: number; totalDiscount: number; totalChecks: number;
       totalGuests: number; totalTips: number; avgDuration: number; daysCount: number;
     }>(sqlText, params) || {
-      totalRevenue: 0, totalDiscount: 0, totalChecks: 0,
+      totalRevenue: 0, pricelistSum: 0, totalDiscount: 0, totalChecks: 0,
       totalGuests: 0, totalTips: 0, avgDuration: 0, daysCount: 0,
     };
     const totalChecks = Number(r.totalChecks);
     const totalRevenue = Number(r.totalRevenue);
     const totalGuests = Number(r.totalGuests);
+    const pricelistSum = Number(r.pricelistSum);
+    const totalDiscount = Number(r.totalDiscount);
     return {
       totalRevenue,
-      totalDiscount: Number(r.totalDiscount),
+      pricelistSum,
+      totalDiscount,
+      discountPct: pricelistSum > 0 ? Math.round((totalDiscount / pricelistSum) * 1000) / 10 : 0,
       totalChecks,
       avgCheck: totalChecks > 0 ? totalRevenue / totalChecks : 0,
       totalGuests,
@@ -229,10 +235,11 @@ export async function getOverviewKpi(filter: AnalyticsFilter) {
 export async function getSalesDaily(filter: AnalyticsFilter) {
   if (isMssqlEnabled()) {
     // Выручка через PAYMENTS.BASICSUM (как в официальном отчёте RK7)
-    const rows = await query<{ date: string; revenue: number; checks: number; discount: number }>(`
+    const rows = await query<{ date: string; revenue: number; pricelistSum: number; checks: number; discount: number }>(`
       SELECT
         CONVERT(date, pc.CLOSEDATETIME)         AS date,
         SUM(p.BASICSUM)                        AS revenue,
+        SUM(pc.PRLISTSUM)                      AS pricelistSum,
         COUNT(DISTINCT CONCAT(pc.VISIT, '_', pc.MIDSERVER, '_', pc.ORDERIDENT, '_', pc.UNI)) AS checks,
         COALESCE(SUM(pc.DISCOUNTSUM), 0)        AS discount
       FROM PRINTCHECKS pc
@@ -255,6 +262,7 @@ export async function getSalesDaily(filter: AnalyticsFilter) {
     return rows.map((r) => ({
       date: r.date instanceof Date ? r.date.toISOString().slice(0, 10) : String(r.date).slice(0, 10),
       revenue: Math.round(Number(r.revenue) * 100) / 100,
+      pricelistSum: Math.round(Number(r.pricelistSum) * 100) / 100,
       discount: Math.round(Number(r.discount) * 100) / 100,
       checks: Number(r.checks),
       avgCheck: r.checks > 0 ? Math.round((Number(r.revenue) / Number(r.checks)) * 100) / 100 : 0,
