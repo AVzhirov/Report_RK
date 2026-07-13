@@ -1166,6 +1166,59 @@ export async function getPaymentsSummary(filter: AnalyticsFilter) {
 }
 
 // ---------------------------------------------------------------------------
+// ПЛАТЕЖИ — по валютам
+// ---------------------------------------------------------------------------
+
+export async function getPaymentsByCurrency(filter: AnalyticsFilter) {
+  if (isMssqlEnabled()) {
+    // PAYMENTS.CURRLINEUNI → CURRLINES.UNI → CURRLINES.SIFR → CURRENCIES.SIFR → NAME
+    // PAYMENTS.BASICSUM — в базовой валюте
+    // PAYMENTS.CURRLINESUM — в валюте платежа
+    const rows = await query<{
+      currency: string; currencyCode: string;
+      baseAmount: number; currAmount: number; count: number;
+    }>(`
+      SELECT
+        COALESCE(cur.NAME, 'Базовая')  AS currency,
+        COALESCE(CAST(cur.CODE AS NVARCHAR(10)), '') AS currencyCode,
+        SUM(p.BASICSUM)                AS baseAmount,
+        SUM(p.CURRLINESUM)              AS currAmount,
+        COUNT(*)                        AS count
+      FROM PAYMENTS p
+      JOIN PRINTCHECKS pc ON pc.VISIT = p.VISIT AND pc.MIDSERVER = p.MIDSERVER
+        AND pc.ORDERIDENT = p.ORDERIDENT AND pc.UNI = p.PRINTCHECKUNI
+      LEFT JOIN CURRLINES cl ON cl.VISIT = p.VISIT AND cl.MIDSERVER = p.MIDSERVER AND cl.UNI = p.CURRLINEUNI
+      LEFT JOIN CURRENCIES cur ON cur.SIFR = cl.SIFR
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = p.MIDSERVER
+      WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
+        AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
+        AND p.STATE = 6 AND p.IGNOREINREP = 0
+        AND (p.SHOWINREP IS NULL OR p.SHOWINREP BETWEEN 0 AND 2)
+        AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
+        AND (pc.DELETED IS NULL OR pc.DELETED = 0)
+      GROUP BY cur.NAME, cur.CODE
+      ORDER BY baseAmount DESC
+    `, {
+      from: filter.from,
+      to: filter.to,
+      restaurantId: filter.restaurantId || null,
+    });
+    const totalBase = rows.reduce((s, r) => s + Number(r.baseAmount), 0);
+    return rows.map(r => ({
+      currency: r.currency,
+      currencyCode: r.currencyCode,
+      baseAmount: Math.round(Number(r.baseAmount) * 100) / 100,
+      currAmount: Math.round(Number(r.currAmount) * 100) / 100,
+      count: Number(r.count),
+      share: totalBase > 0 ? Math.round((Number(r.baseAmount) / totalBase) * 1000) / 10 : 0,
+    }));
+  }
+
+  // SQLite fallback
+  return [];
+}
+
+// ---------------------------------------------------------------------------
 // ВОЗВРАТЫ И УДАЛЕНИЯ
 // ---------------------------------------------------------------------------
 

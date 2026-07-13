@@ -11,6 +11,10 @@ interface PayData {
   totalTips: number;
   byType: { type: string; typeName: string; amount: number; tips: number; count: number; share: number }[];
 }
+interface CurrencyData {
+  currency: string; currencyCode: string;
+  baseAmount: number; currAmount: number; count: number; share: number;
+}
 
 const TYPE_COLORS: Record<string, string> = {
   CASH: "#2A5C3D",
@@ -31,6 +35,7 @@ const DEFAULT_COLOR = "#7A5A45";
 
 export function PaymentsModule() {
   const { data, loading, error } = useAnalytics<PayData>("payments");
+  const { data: byCurrency, loading: currLoading } = useAnalytics<CurrencyData[]>("payments-by-currency");
 
   return (
     <div className="space-y-5">
@@ -88,6 +93,60 @@ export function PaymentsModule() {
                       <td className="py-2.5 text-right tabular-nums font-semibold" style={{ color: "var(--bordeaux)" }}>{formatRub(p.amount)}</td>
                       <td className="py-2.5 text-right tabular-nums">{p.share}%</td>
                       <td className="py-2.5 text-right tabular-nums">{formatNum(p.count, 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </SectionCard>
+
+      {/* По валютам */}
+      <SectionCard title="Платежи по валютам" subtitle="Разбивка оплат по валютам (базовая сумма и сумма в валюте платежа)"
+        action={<ExportButton data={byCurrency as unknown as Record<string, unknown>[]} filename="payments-currencies" />}>
+        {currLoading || !byCurrency ? <LoadingBlock /> : byCurrency.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground text-sm">Нет данных</div>
+        ) : (
+          <div className="grid lg:grid-cols-2 gap-5">
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie data={byCurrency} dataKey="baseAmount" nameKey="currency" cx="50%" cy="50%" outerRadius={110} innerRadius={50}
+                  label={(e: { currency: string; share: number }) => `${e.currency}: ${e.share}%`}>
+                  {byCurrency.map((_, i) => <Cell key={i} fill={TYPE_COLORS[String(i)] || DEFAULT_COLOR} />)}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ background: "#FBF6EC", border: "1px solid #C9A24B", borderRadius: 8, fontSize: 13 }}
+                  formatter={(v: number, n: string) => [formatRub(v), n]}
+                />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase text-muted-foreground border-b border-border">
+                    <th className="py-2">Валюта</th>
+                    <th className="py-2 text-right">Базовая сумма</th>
+                    <th className="py-2 text-right">В валюте платежа</th>
+                    <th className="py-2 text-right">Доля</th>
+                    <th className="py-2 text-right">Платежей</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byCurrency.map((c, i) => (
+                    <tr key={i} className="border-b border-border/40 hover:bg-muted/30">
+                      <td className="py-2.5">
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full" style={{ background: TYPE_COLORS[String(i)] || DEFAULT_COLOR }} />
+                          <span className="font-medium">{c.currency}</span>
+                          {c.currencyCode && <span className="text-xs text-muted-foreground">({c.currencyCode})</span>}
+                        </div>
+                      </td>
+                      <td className="py-2.5 text-right tabular-nums font-semibold" style={{ color: "var(--bordeaux)" }}>{formatRub(c.baseAmount)}</td>
+                      <td className="py-2.5 text-right tabular-nums text-muted-foreground">{formatNum(c.currAmount, 2)}</td>
+                      <td className="py-2.5 text-right tabular-nums">{c.share}%</td>
+                      <td className="py-2.5 text-right tabular-nums">{formatNum(c.count, 0)}</td>
                     </tr>
                   ))}
                 </tbody>

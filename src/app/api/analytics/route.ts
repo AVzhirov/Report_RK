@@ -13,6 +13,7 @@ import {
   getStaffPerformance,
   getHallHeatmap,
   getPaymentsSummary,
+  getPaymentsByCurrency,
   getVoidsSummary,
   getForecast,
   type AnalyticsFilter,
@@ -88,6 +89,8 @@ export async function GET(req: NextRequest) {
         return NextResponse.json(await getHallHeatmap(filter));
       case "payments":
         return NextResponse.json(await getPaymentsSummary(filter));
+      case "payments-by-currency":
+        return NextResponse.json(await getPaymentsByCurrency(filter));
       case "voids":
         return NextResponse.json(await getVoidsSummary(filter));
       case "forecast":
