@@ -6,31 +6,28 @@ import { useFilter } from "@/lib/filter-store";
  * Хук для запроса к /api/analytics?module=... с учётом глобальных фильтров.
  * Возвращает { data, loading, error, refetch }.
  *
- * АВТООБНОВЛЕНИЕ: при смене периода (preset/customFrom/customTo) или ресторана
- * (restaurantId) хук автоматически перезапрашивает данные. Сравнение делается
- * по строке параметров (toParams()), поэтому любое изменение фильтра вызывает
- * повторный fetch.
+ * АВТООБНОВЛЕНИЕ: при смене периода или ресторана хук автоматически
+ * перезапрашивает данные.
  */
 export function useAnalytics<T = unknown>(module: string, enabled = true) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Подписываемся на ВСЕ поля фильтра, чтобы реагировать на любое изменение
-  const restaurantId = useFilter((s) => s.restaurantId);
-  const preset = useFilter((s) => s.preset);
-  const customFrom = useFilter((s) => s.customFrom);
-  const customTo = useFilter((s) => s.customTo);
-  const toParams = useFilter((s) => s.toParams);
-
-  // Формируем строку параметров — меняется при любом изменении фильтра
-  const paramsKey = toParams();
+  // Подписываемся только на toParams — одного вызова достаточно
+  const paramsKey = useFilter((s) => s.toParams());
 
   const abortRef = useRef<AbortController | null>(null);
+  const lastParamsRef = useRef<string>("");
 
   const fetchIt = useCallback(async () => {
     if (!enabled) return;
-    // Отменяем предыдущий запрос (если был)
+
+    // Защита от дублей: не запускаем новый запрос если параметры не изменились
+    if (lastParamsRef.current === paramsKey && data !== null) return;
+    lastParamsRef.current = paramsKey;
+
+    // Отменяем предыдущий запрос
     if (abortRef.current) abortRef.current.abort();
     const ac = new AbortController();
     abortRef.current = ac;
@@ -43,7 +40,6 @@ export function useAnalytics<T = unknown>(module: string, enabled = true) {
         signal: ac.signal,
       });
       if (!res.ok) {
-        // Проверяем что ответ JSON, а не HTML (404/500 страница Next.js)
         const contentType = res.headers.get("content-type") || "";
         if (!contentType.includes("application/json")) {
           const text = await res.text().catch(() => "");
@@ -56,20 +52,17 @@ export function useAnalytics<T = unknown>(module: string, enabled = true) {
       const json = await res.json();
       setData(json);
     } catch (e: unknown) {
-      // AbortError — не показываем (это отмена предыдущего запроса)
       if (e instanceof Error && e.name === "AbortError") return;
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      // Сбрасываем loading только если это последний запрос
       if (abortRef.current === ac) {
         setLoading(false);
       }
     }
-  }, [module, paramsKey, enabled]);
+  }, [module, paramsKey, enabled, data]);
 
   useEffect(() => {
     fetchIt();
-    // Cleanup: отменяем запрос при размонтировании
     return () => {
       if (abortRef.current) abortRef.current.abort();
     };
