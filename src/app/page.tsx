@@ -11,6 +11,7 @@ import { StaffModule } from "@/components/modules/staff";
 import { HallModule } from "@/components/modules/hall";
 import { PaymentsModule } from "@/components/modules/payments";
 import { VoidsModule } from "@/components/modules/voids";
+import { ShiftBalanceModule } from "@/components/modules/shift-balance";
 import { ForecastModule } from "@/components/modules/forecast";
 import { SettingsModule } from "@/components/modules/settings";
 
@@ -38,6 +39,7 @@ export default function Home() {
       {effectiveModule === "hall"      && <HallModule />}
       {effectiveModule === "payments"  && <PaymentsModule />}
       {effectiveModule === "voids"     && <VoidsModule />}
+      {effectiveModule === "shiftbalance" && <ShiftBalanceModule />}
       {effectiveModule === "forecast"  && <ForecastModule />}
       {effectiveModule === "settings"  && <SettingsModule />}
     </DashboardLayout>

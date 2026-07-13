@@ -15,6 +15,7 @@ import {
   getPaymentsSummary,
   getPaymentsByCurrency,
   getVoidsSummary,
+  getShiftBalance,
   getForecast,
   type AnalyticsFilter,
 } from "@/lib/analytics";
@@ -93,6 +94,8 @@ export async function GET(req: NextRequest) {
         return NextResponse.json(await getPaymentsByCurrency(filter));
       case "voids":
         return NextResponse.json(await getVoidsSummary(filter));
+      case "shift-balance":
+        return NextResponse.json(await getShiftBalance(filter));
       case "forecast":
         return NextResponse.json(await getForecast(filter));
       default:

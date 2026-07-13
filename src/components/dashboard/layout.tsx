@@ -8,13 +8,13 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   UtensilsCrossed, LayoutDashboard, TrendingUp, UtensilsCrossed as MenuIcon,
   Percent, Users, LayoutGrid, CreditCard, LineChart, LogOut,
-  ChevronDown, Store, Settings as SettingsIcon, Sun, Moon, Ban,
+  ChevronDown, Store, Settings as SettingsIcon, Sun, Moon, Ban, Calendar,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type ModuleId =
   | "overview" | "sales" | "menu" | "discounts" | "staff"
-  | "hall" | "payments" | "voids" | "forecast" | "settings";
+  | "hall" | "payments" | "voids" | "shiftbalance" | "forecast" | "settings";
 
 interface ModuleMeta {
   id: ModuleId;
@@ -34,6 +34,7 @@ export const MODULES: ModuleMeta[] = [
   { id: "hall",      label: "Зал и столы",   icon: LayoutGrid,      desc: "Загрузка, оборачиваемость" },
   { id: "payments",  label: "Платежи",       icon: CreditCard,      desc: "Наличные/карта/QR" },
   { id: "voids",     label: "Возвраты",      icon: Ban,             desc: "Удаления блюд и чеков" },
+  { id: "shiftbalance", label: "Баланс смен", icon: Calendar,       desc: "Баланс по кассовым сменам" },
   { id: "forecast",  label: "Прогноз",       icon: LineChart,       desc: "Прогноз выручки, аномалии" },
   { id: "settings",  label: "Настройки",     icon: SettingsIcon,    desc: "БД, демо-данные, MS SQL, сеть",
     roles: ["OWNER", "MANAGER"] },

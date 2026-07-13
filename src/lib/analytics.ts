@@ -143,8 +143,8 @@ export async function getOverviewKpi(filter: AnalyticsFilter) {
       FROM PRINTCHECKS pc
       LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
         AND p.ORDERIDENT = pc.ORDERIDENT AND p.PRINTCHECKUNI = pc.UNI
-        AND p.STATE = 6 AND p.IGNOREINREP = 0
-        AND (p.SHOWINREP IS NULL OR p.SHOWINREP BETWEEN 0 AND 2)
+        AND p.STATE in (4,5,6) AND p.IGNOREINREP = 0
+        AND p.SHOWINREP <> 3
       LEFT JOIN VISITS v ON v.SIFR = pc.VISIT AND v.MIDSERVER = pc.MIDSERVER
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
@@ -245,8 +245,8 @@ export async function getSalesDaily(filter: AnalyticsFilter) {
       FROM PRINTCHECKS pc
       LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
         AND p.ORDERIDENT = pc.ORDERIDENT AND p.PRINTCHECKUNI = pc.UNI
-        AND p.STATE = 6 AND p.IGNOREINREP = 0
-        AND (p.SHOWINREP IS NULL OR p.SHOWINREP BETWEEN 0 AND 2)
+        AND p.STATE in (4,5,6) AND p.IGNOREINREP = 0
+        AND p.SHOWINREP <> 3
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
@@ -316,8 +316,8 @@ export async function getSalesByRestaurant(filter: AnalyticsFilter) {
         JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
         LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
           AND p.ORDERIDENT = pc.ORDERIDENT AND p.PRINTCHECKUNI = pc.UNI
-          AND p.STATE = 6 AND p.IGNOREINREP = 0
-          AND (p.SHOWINREP IS NULL OR p.SHOWINREP BETWEEN 0 AND 2)
+          AND p.STATE in (4,5,6) AND p.IGNOREINREP = 0
+          AND p.SHOWINREP <> 3
         WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
           AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
           AND (pc.DELETED IS NULL OR pc.DELETED = 0)
@@ -377,8 +377,8 @@ export async function getSalesHourly(filter: AnalyticsFilter) {
       FROM PRINTCHECKS pc
       LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
         AND p.ORDERIDENT = pc.ORDERIDENT AND p.PRINTCHECKUNI = pc.UNI
-        AND p.STATE = 6 AND p.IGNOREINREP = 0
-        AND (p.SHOWINREP IS NULL OR p.SHOWINREP BETWEEN 0 AND 2)
+        AND p.STATE in (4,5,6) AND p.IGNOREINREP = 0
+        AND p.SHOWINREP <> 3
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
@@ -450,8 +450,8 @@ export async function getSalesByOrderCategory(filter: AnalyticsFilter) {
       LEFT JOIN UNCHANGEABLEORDERTYPES uot ON uot.SIFR = o.UOT
       LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
         AND p.ORDERIDENT = pc.ORDERIDENT AND p.PRINTCHECKUNI = pc.UNI
-        AND p.STATE = 6 AND p.IGNOREINREP = 0
-        AND (p.SHOWINREP IS NULL OR p.SHOWINREP BETWEEN 0 AND 2)
+        AND p.STATE in (4,5,6) AND p.IGNOREINREP = 0
+        AND p.SHOWINREP <> 3
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
@@ -804,8 +804,8 @@ export async function getStaffPerformance(filter: AnalyticsFilter) {
       LEFT JOIN PRINTCHECKS pc ON pc.VISIT = o.VISIT AND pc.MIDSERVER = o.MIDSERVER AND pc.ORDERIDENT = o.IDENTINVISIT
       LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
         AND p.ORDERIDENT = pc.ORDERIDENT AND p.PRINTCHECKUNI = pc.UNI
-        AND p.STATE = 6 AND p.IGNOREINREP = 0
-        AND (p.SHOWINREP IS NULL OR p.SHOWINREP BETWEEN 0 AND 2)
+        AND p.STATE in (4,5,6) AND p.IGNOREINREP = 0
+        AND p.SHOWINREP <> 3
       LEFT JOIN VISITS v ON v.SIFR = o.VISIT AND v.MIDSERVER = o.MIDSERVER
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = o.MIDSERVER
       WHERE o.OPENTIME >= @from AND o.OPENTIME <= @to
@@ -1126,8 +1126,8 @@ export async function getPaymentsSummary(filter: AnalyticsFilter) {
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = p.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
-        AND p.STATE = 6 AND p.IGNOREINREP = 0
-        AND (p.SHOWINREP IS NULL OR p.SHOWINREP BETWEEN 0 AND 2)
+        AND p.STATE in (4,5,6) AND p.IGNOREINREP = 0
+        AND p.SHOWINREP <> 3
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
       GROUP BY p.PAYLINETYPE
@@ -1219,8 +1219,8 @@ export async function getPaymentsByCurrency(filter: AnalyticsFilter) {
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = p.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
-        AND p.STATE = 6 AND p.IGNOREINREP = 0
-        AND p.SHOWINREP BETWEEN 0 AND 2
+        AND p.STATE in (4,5,6) AND p.IGNOREINREP = 0
+        AND p.SHOWINREP <> 3
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
       GROUP BY cur.NAME, cur.CODE
@@ -1242,6 +1242,80 @@ export async function getPaymentsByCurrency(filter: AnalyticsFilter) {
   }
 
   // SQLite fallback
+  return [];
+}
+
+// ---------------------------------------------------------------------------
+// БАЛАНС СМЕН (по официальному запросу RK7)
+// ---------------------------------------------------------------------------
+
+export async function getShiftBalance(filter: AnalyticsFilter) {
+  if (isMssqlEnabled()) {
+    // По официальному балансовому отчёту R-Keeper 7:
+    // Выручка = SUM(PAYMENTS.BASICSUM), STATE in (4,5,6), SHOWINREP <> 3
+    // Налоги = SUM(PRINTCHECKS.TAXSUM) при STATE=6
+    // Возвраты = SUM(PRINTCHECKS.BINDEDSUM) при STATE=7
+    // Скидки = через DISCPARTS
+    // Себестоимость = через PRICES (PRICETYPE=4, SPECIES=1)
+    const rows = await query<{
+      shiftDate: string; shiftNum: number; restaurantName: string;
+      currencyType: string; revenue: number; checkCount: number; guestCount: number;
+      taxSum: number; voidSum: number; voidChecks: number;
+      pricelistSum: number; costSum: number;
+    }>(`
+      SELECT
+        gs.SHIFTDATE                                        AS shiftDate,
+        gs.SHIFTNUM                                         AS shiftNum,
+        COALESCE(r.NAME, '')                                AS restaurantName,
+        COALESCE(ct.NAME, 'Базовая')                        AS currencyType,
+        COALESCE(SUM(p.BASICSUM), 0)                        AS revenue,
+        COUNT(DISTINCT pc.GLOBALIDENT)                      AS checkCount,
+        COALESCE(SUM(CASE WHEN pc.PARENTCHECKNUM = 0 OR pc.PARENTCHECKNUM IS NULL
+                           THEN pc.GUESTCNT ELSE 0 END), 0) AS guestCount,
+        COALESCE(SUM(CASE WHEN pc.STATE = 6 THEN pc.TAXSUM ELSE 0 END), 0)  AS taxSum,
+        COALESCE(SUM(CASE WHEN pc.STATE = 7 THEN pc.BINDEDSUM ELSE 0 END), 0) AS voidSum,
+        SUM(CASE WHEN pc.STATE = 7 THEN 1 ELSE 0 END)       AS voidChecks,
+        COALESCE(SUM(pc.PRLISTSUM), 0)                      AS pricelistSum,
+        0                                                    AS costSum
+      FROM GLOBALSHIFTS gs
+      INNER JOIN ORDERS o ON o.MIDSERVER = gs.MIDSERVER AND o.ICOMMONSHIFT = gs.SHIFTNUM
+      INNER JOIN PAYMENTS p ON p.VISIT = o.VISIT AND p.MIDSERVER = o.MIDSERVER AND p.ORDERIDENT = o.IDENTINVISIT
+        AND p.IGNOREINREP = 0 AND p.STATE in (4,5,6) AND p.SHOWINREP <> 3
+      LEFT JOIN CURRLINES cl ON cl.VISIT = p.VISIT AND cl.MIDSERVER = p.MIDSERVER AND cl.UNI = p.CURRLINEUNI
+      LEFT JOIN PRINTCHECKS pc ON pc.VISIT = cl.VISIT AND pc.MIDSERVER = cl.MIDSERVER AND pc.UNI = cl.CHECKUNI
+        AND pc.IGNOREINREP = 0
+      LEFT JOIN CURRENCYTYPES ct ON ct.SIFR = p.IHIGHLEVELTYPE
+      LEFT JOIN CASHGROUPS cg ON cg.SIFR = gs.MIDSERVER
+      LEFT JOIN RESTAURANTS r ON r.SIFR = cg.RESTAURANT
+      WHERE gs.STATUS = 3
+        AND gs.SHIFTDATE >= @from AND gs.SHIFTDATE <= @to
+        AND (@restaurantId IS NULL OR cg.RESTAURANT = @restaurantId)
+      GROUP BY gs.SHIFTDATE, gs.SHIFTNUM, r.NAME, ct.NAME
+      ORDER BY gs.SHIFTDATE DESC, gs.SHIFTNUM DESC
+    `, {
+      from: filter.from,
+      to: filter.to,
+      restaurantId: filter.restaurantId || null,
+    });
+
+    return rows.map(r => ({
+      shiftDate: r.shiftDate instanceof Date ? r.shiftDate.toISOString().slice(0, 10) : String(r.shiftDate).slice(0, 10),
+      shiftNum: Number(r.shiftNum),
+      restaurantName: r.restaurantName,
+      currencyType: r.currencyType,
+      revenue: Math.round(Number(r.revenue) * 100) / 100,
+      checkCount: Number(r.checkCount),
+      guestCount: Number(r.guestCount),
+      taxSum: Math.round(Number(r.taxSum) * 100) / 100,
+      voidSum: Math.round(Number(r.voidSum) * 100) / 100,
+      voidChecks: Number(r.voidChecks),
+      pricelistSum: Math.round(Number(r.pricelistSum) * 100) / 100,
+      costSum: Number(r.costSum),
+      discountSum: Math.round((Number(r.pricelistSum) - Number(r.revenue)) * 100) / 100,
+      avgCheck: r.checkCount > 0 ? Math.round((Number(r.revenue) / Number(r.checkCount)) * 100) / 100 : 0,
+    }));
+  }
+
   return [];
 }
 
