@@ -85,11 +85,11 @@ export interface AnalyticsFilter {
 
 export async function getRestaurants(): Promise<Restaurant[]> {
   if (isMssqlEnabled()) {
-    // R-Keeper 7: таблица RESTAURANTS
+    // R-Keeper 7: RESTAURANTS — справочник, нет поля DBSTATUS
+    // (DBSTATUS только у накопительных таблиц: PRINTCHECKS, VISITS, ORDERS и т.д.)
     const sqlText = `
       SELECT SIFR AS sifr, CAST(CODE AS NVARCHAR(50)) AS code, NAME AS name, '' AS address
       FROM RESTAURANTS
-      WHERE DBSTATUS IS NULL OR DBSTATUS <> -1
       ORDER BY SIFR
     `;
     try {
@@ -288,7 +288,6 @@ export async function getSalesByRestaurant(filter: AnalyticsFilter) {
         AND pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER AND cgr.RESTAURANT = r.SIFR
-      WHERE r.DBSTATUS IS NULL OR r.DBSTATUS <> -1
       GROUP BY r.SIFR, r.NAME, r.CODE
       ORDER BY r.SIFR
     `, {
@@ -721,7 +720,6 @@ export async function getStaffPerformance(filter: AnalyticsFilter) {
         SUM(AMOUNT) AS net
       FROM AWARDSPENALTIESDATA
       WHERE DATETIME >= @from AND DATETIME <= @to
-        AND (DBSTATUS IS NULL OR DBSTATUS <> -1)
       GROUP BY OPERATOR
     `, {
       from: filter.from,
@@ -854,7 +852,7 @@ export async function getHallHeatmap(filter: AnalyticsFilter) {
       SELECT
         COUNT(*)                       AS totalVisits,
         COALESCE(SUM(DATEDIFF(MINUTE, v.STARTTIME, v.QUITTIME)), 0) AS totalDuration,
-        (SELECT COUNT(*) FROM HALLPLANS WHERE DBSTATUS IS NULL OR DBSTATUS <> -1) AS totalTables
+        (SELECT COUNT(*) FROM HALLPLANS) AS totalTables
       FROM VISITS v
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = v.MIDSERVER
       WHERE v.STARTTIME >= @from AND v.STARTTIME <= @to
