@@ -1,6 +1,7 @@
 "use client";
 import { useAnalytics, formatRub, formatNum, formatDate } from "@/lib/use-analytics";
 import { KpiCard, SectionCard, LoadingBlock, ErrorBlock } from "@/components/analytics/common";
+import { ExportButton } from "@/lib/export";
 import { TrendingUp, ShoppingBag, Percent, Calendar } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -69,7 +70,8 @@ export function SalesModule() {
 
       <div className="grid lg:grid-cols-2 gap-5">
         {/* По точкам сети */}
-        <SectionCard title="Сравнение точек" subtitle="Выручка, чеки, средний чек">
+        <SectionCard title="Сравнение точек" subtitle="Выручка, чеки, средний чек"
+          action={<ExportButton data={byRest as unknown as Record<string, unknown>[]} filename="restaurants" />}>
           {rLoading || !byRest ? <LoadingBlock /> : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

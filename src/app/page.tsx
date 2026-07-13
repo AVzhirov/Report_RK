@@ -10,6 +10,7 @@ import { DiscountsModule } from "@/components/modules/discounts";
 import { StaffModule } from "@/components/modules/staff";
 import { HallModule } from "@/components/modules/hall";
 import { PaymentsModule } from "@/components/modules/payments";
+import { VoidsModule } from "@/components/modules/voids";
 import { ForecastModule } from "@/components/modules/forecast";
 import { SettingsModule } from "@/components/modules/settings";
 
@@ -36,6 +37,7 @@ export default function Home() {
       {effectiveModule === "staff"     && <StaffModule />}
       {effectiveModule === "hall"      && <HallModule />}
       {effectiveModule === "payments"  && <PaymentsModule />}
+      {effectiveModule === "voids"     && <VoidsModule />}
       {effectiveModule === "forecast"  && <ForecastModule />}
       {effectiveModule === "settings"  && <SettingsModule />}
     </DashboardLayout>

@@ -1079,6 +1079,101 @@ export async function getPaymentsSummary(filter: AnalyticsFilter) {
 }
 
 // ---------------------------------------------------------------------------
+// ВОЗВРАТЫ И УДАЛЕНИЯ
+// ---------------------------------------------------------------------------
+
+export async function getVoidsSummary(filter: AnalyticsFilter) {
+  if (isMssqlEnabled()) {
+    // DISHVOIDS — удалённые блюда, ORDERVOIDS — причины, PRINTCHECKS.DELETED — удалённые чеки
+    const totals = await queryOne<{ totalVoids: number; voidedSum: number; deletedChecks: number }>(`
+      SELECT
+        (SELECT COUNT(*) FROM DISHVOIDS dv
+         JOIN PRINTCHECKS pc ON pc.VISIT = dv.VISIT AND pc.MIDSERVER = dv.MIDSERVER AND pc.ORDERIDENT = dv.ORDERIDENT
+         WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
+           AND (@restaurantId IS NULL OR EXISTS(SELECT 1 FROM CASHGROUPS cg WHERE cg.SIFR = pc.MIDSERVER AND cg.RESTAURANT = @restaurantId))
+           AND (dv.DBSTATUS IS NULL OR dv.DBSTATUS <> -1)
+        ) AS totalVoids,
+        (SELECT COALESCE(SUM(dv.PRLISTSUM), 0) FROM DISHVOIDS dv
+         JOIN PRINTCHECKS pc ON pc.VISIT = dv.VISIT AND pc.MIDSERVER = dv.MIDSERVER AND pc.ORDERIDENT = dv.ORDERIDENT
+         WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
+           AND (@restaurantId IS NULL OR EXISTS(SELECT 1 FROM CASHGROUPS cg WHERE cg.SIFR = pc.MIDSERVER AND cg.RESTAURANT = @restaurantId))
+           AND (dv.DBSTATUS IS NULL OR dv.DBSTATUS <> -1)
+        ) AS voidedSum,
+        (SELECT COUNT(*) FROM PRINTCHECKS pc
+         LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
+         WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
+           AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
+           AND pc.DELETED = 1
+           AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
+        ) AS deletedChecks
+    `, {
+      from: filter.from,
+      to: filter.to,
+      restaurantId: filter.restaurantId || null,
+    }) || { totalVoids: 0, voidedSum: 0, deletedChecks: 0 };
+
+    // По причинам
+    const byReason = await query<{ reason: string; count: number; sum: number }>(`
+      SELECT TOP 20
+        COALESCE(ov.NAME, 'Без причины') AS reason,
+        COUNT(*) AS count,
+        COALESCE(SUM(dv.PRLISTSUM), 0) AS sum
+      FROM DISHVOIDS dv
+      LEFT JOIN ORDERVOIDS ov ON ov.SIFR = dv.SIFR
+      JOIN PRINTCHECKS pc ON pc.VISIT = dv.VISIT AND pc.MIDSERVER = dv.MIDSERVER AND pc.ORDERIDENT = dv.ORDERIDENT
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
+      WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
+        AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
+        AND (dv.DBSTATUS IS NULL OR dv.DBSTATUS <> -1)
+      GROUP BY ov.NAME
+      ORDER BY count DESC
+    `, {
+      from: filter.from,
+      to: filter.to,
+      restaurantId: filter.restaurantId || null,
+    });
+
+    // По сотрудникам
+    const byEmployee = await query<{ name: string; count: number; sum: number }>(`
+      SELECT TOP 20
+        COALESCE(e.NAME, 'Неизвестно') AS name,
+        COUNT(*) AS count,
+        COALESCE(SUM(dv.PRLISTSUM), 0) AS sum
+      FROM DISHVOIDS dv
+      LEFT JOIN EMPLOYEES e ON e.SIFR = dv.ICREATOR
+      JOIN PRINTCHECKS pc ON pc.VISIT = dv.VISIT AND pc.MIDSERVER = dv.MIDSERVER AND pc.ORDERIDENT = dv.ORDERIDENT
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
+      WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
+        AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
+        AND (dv.DBSTATUS IS NULL OR dv.DBSTATUS <> -1)
+      GROUP BY e.NAME
+      ORDER BY count DESC
+    `, {
+      from: filter.from,
+      to: filter.to,
+      restaurantId: filter.restaurantId || null,
+    });
+
+    return {
+      totalVoids: Number(totals.totalVoids),
+      voidedSum: Math.round(Number(totals.voidedSum) * 100) / 100,
+      deletedChecks: Number(totals.deletedChecks),
+      byReason: byReason.map(r => ({ reason: r.reason, count: Number(r.count), sum: Math.round(Number(r.sum) * 100) / 100 })),
+      byEmployee: byEmployee.map(r => ({ name: r.name, count: Number(r.count), sum: Math.round(Number(r.sum) * 100) / 100 })),
+    };
+  }
+
+  // SQLite fallback — нет данных о возвратах в демо
+  return {
+    totalVoids: 0,
+    voidedSum: 0,
+    deletedChecks: 0,
+    byReason: [],
+    byEmployee: [],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // ПРОГНОЗ (одинаково для SQLite и MS SQL — работает поверх getSalesDaily)
 // ---------------------------------------------------------------------------
 

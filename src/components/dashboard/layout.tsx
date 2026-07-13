@@ -8,13 +8,13 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   UtensilsCrossed, LayoutDashboard, TrendingUp, UtensilsCrossed as MenuIcon,
   Percent, Users, LayoutGrid, CreditCard, LineChart, LogOut,
-  ChevronDown, Store, Settings as SettingsIcon, Sun, Moon,
+  ChevronDown, Store, Settings as SettingsIcon, Sun, Moon, Ban,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type ModuleId =
   | "overview" | "sales" | "menu" | "discounts" | "staff"
-  | "hall" | "payments" | "forecast" | "settings";
+  | "hall" | "payments" | "voids" | "forecast" | "settings";
 
 interface ModuleMeta {
   id: ModuleId;
@@ -33,6 +33,7 @@ export const MODULES: ModuleMeta[] = [
   { id: "staff",     label: "Сотрудники",    icon: Users,           desc: "Эффективность персонала" },
   { id: "hall",      label: "Зал и столы",   icon: LayoutGrid,      desc: "Загрузка, оборачиваемость" },
   { id: "payments",  label: "Платежи",       icon: CreditCard,      desc: "Наличные/карта/QR" },
+  { id: "voids",     label: "Возвраты",      icon: Ban,             desc: "Удаления блюд и чеков" },
   { id: "forecast",  label: "Прогноз",       icon: LineChart,       desc: "Прогноз выручки, аномалии" },
   { id: "settings",  label: "Настройки",     icon: SettingsIcon,    desc: "БД, демо-данные, MS SQL, сеть",
     roles: ["OWNER", "MANAGER"] },

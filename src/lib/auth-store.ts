@@ -47,9 +47,9 @@ export const useAuth = create<AuthState>()(
 
 // Карта прав ролей на модули
 export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
-  OWNER:   ["overview","sales","menu","discounts","staff","hall","payments","forecast","settings"],
-  MANAGER: ["overview","sales","menu","discounts","staff","hall","payments","forecast","settings"],
-  ANALYST: ["overview","sales","menu","discounts","staff","hall","payments","forecast"],
+  OWNER:   ["overview","sales","menu","discounts","staff","hall","payments","voids","forecast","settings"],
+  MANAGER: ["overview","sales","menu","discounts","staff","hall","payments","voids","forecast","settings"],
+  ANALYST: ["overview","sales","menu","discounts","staff","hall","payments","voids","forecast"],
   CASHIER: ["overview","sales","payments"],
 };
 
