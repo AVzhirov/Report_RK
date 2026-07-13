@@ -70,7 +70,21 @@ export function DashboardLayout({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   useEffect(() => {
-    fetch("/api/analytics?module=restaurants").then(r => r.json()).then(setRestaurants).catch(() => {});
+    fetch("/api/analytics?module=restaurants")
+      .then(r => r.json())
+      .then(data => {
+        // Защита: API может вернуть {error: "..."} вместо массива
+        if (Array.isArray(data)) {
+          setRestaurants(data);
+        } else {
+          console.warn("RESTAURANTS API вернул не массив:", data);
+          setRestaurants([]);
+        }
+      })
+      .catch(err => {
+        console.warn("Не удалось загрузить список ресторанов:", err);
+        setRestaurants([]);
+      });
   }, []);
 
   // Фильтрация модулей:

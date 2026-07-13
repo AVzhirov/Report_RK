@@ -52,23 +52,55 @@ function restCond(filter: AnalyticsFilter, column = "RestaurantId"): string {
 
 export async function getRestaurants(): Promise<Restaurant[]> {
   if (isMssqlEnabled()) {
-    const rows = await query<{
-      sifr: number; code: string; name: string; address: string | null;
-    }>(`
+    // В R-Keeper 7 таблица может называться RESTAURANTS или RESTAURANT
+    // Пробуем оба варианта
+    const sqlText = `
       SELECT SIFR AS sifr, CAST(CODE AS NVARCHAR(50)) AS code, NAME AS name, '' AS address
-      FROM RESTAURANT
-      WHERE DBSTATUS <> -1
+      FROM RESTAURANTS
+      WHERE DBSTATUS <> -1 OR DBSTATUS IS NULL
       ORDER BY SIFR
-    `);
-    return rows.map(r => ({
-      sifr: r.sifr,
-      code: r.code || `R${r.sifr}`,
-      name: r.name,
-      address: r.address,
-      isDark: false,
-      openTime: null,
-      closeTime: null,
-    }));
+    `;
+    try {
+      const rows = await query<{
+        sifr: number; code: string; name: string; address: string | null;
+      }>(sqlText);
+      if (rows.length > 0) {
+        return rows.map(r => ({
+          sifr: r.sifr,
+          code: r.code || `R${r.sifr}`,
+          name: r.name,
+          address: r.address,
+          isDark: false,
+          openTime: null,
+          closeTime: null,
+        }));
+      }
+    } catch {
+      // Если RESTAURANTS не сработало — пробуем RESTAURANT (единственное число)
+      try {
+        const rows2 = await query<{
+          sifr: number; code: string; name: string; address: string | null;
+        }>(`
+          SELECT SIFR AS sifr, CAST(CODE AS NVARCHAR(50)) AS code, NAME AS name, '' AS address
+          FROM RESTAURANT
+          WHERE DBSTATUS <> -1 OR DBSTATUS IS NULL
+          ORDER BY SIFR
+        `);
+        return rows2.map(r => ({
+          sifr: r.sifr,
+          code: r.code || `R${r.sifr}`,
+          name: r.name,
+          address: r.address,
+          isDark: false,
+          openTime: null,
+          closeTime: null,
+        }));
+      } catch (e2) {
+        console.error("Не удалось получить список ресторанов:", e2);
+        return [];
+      }
+    }
+    return [];
   }
   return await db.restaurant.findMany({ orderBy: { sifr: "asc" } });
 }
@@ -245,11 +277,11 @@ export async function getSalesByRestaurant(filter: AnalyticsFilter) {
         COALESCE(SUM(pc.SUMM), 0)         AS revenue,
         COUNT(*)                           AS checks,
         COALESCE(SUM(pc.DISCSUMM), 0)     AS discount
-      FROM RESTAURANT r
+      FROM RESTAURANTS r
       LEFT JOIN PRINTCHECKS pc ON pc.RESTAURANT = r.SIFR
         AND pc.DATETIME >= @from AND pc.DATETIME <= @to
         AND pc.DBSTATUS <> -1
-      WHERE r.DBSTATUS <> -1
+      WHERE r.DBSTATUS <> -1 OR r.DBSTATUS IS NULL
       GROUP BY r.SIFR, r.NAME, r.CODE
       ORDER BY r.SIFR
     `, {
