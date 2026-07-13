@@ -6,11 +6,49 @@
  *   базы R-Keeper 7 на MS SQL Server.
  * - Иначе — из локальной SQLite с демо-данными.
  *
- * Все T-SQL запросы используют реальные имена таблиц R-Keeper 7.6:
- *   PRINTCHECKS, ORDERS, VISITS, PAYMENTS, MENUITEMS, CASHES,
- *   EMPLOYEES, RESTAURANT, HALLPLANS, DISCOUNTS, DISCOUNTDETAILS и т.д.
+ * T-SQL запросы используют РЕАЛЬНЫЕ имена таблиц и полей R-Keeper 7.6:
  *
- * Документация по структуре таблиц: R-keeper-7-sql-base-info.pdf
+ * PRINTCHECKS (чеки):
+ *   CLOSEDATETIME (не DATETIME!) — дата печати чека
+ *   BASICSUM / BINDEDSUM / NATIONALSUM — сумма чека
+ *   DISCOUNTSUM (не DISCSUMM!) — сумма скидки
+ *   GUESTCNT — число гостей
+ *   RESTAURANT — FK на RESTAURANTS.SIFR
+ *   VISIT, MIDSERVER, ORDERIDENT, UNI — ключи
+ *
+ * VISITS (визиты):
+ *   STARTTIME, QUITTIME — времена
+ *   GUESTCNT — число гостей
+ *
+ * ORDERS (заказы):
+ *   OPENTIME — время открытия
+ *   ICREATOR — FK на EMPLOYEES.SIFR
+ *   TABLEID, TABLENAME — стол
+ *
+ * PAYMENTS (платежи):
+ *   BASICSUM — сумма в базовой валюте
+ *   PAYLINETYPE — enum (0=pltCash, 1=pltCrCard, 5=pltOtherNonCash, ...)
+ *   VISIT, MIDSERVER, ORDERIDENT, PRINTCHECKUNI, UNI
+ *
+ * SESSIONDISHES (проданные блюда):
+ *   SIFR — FK на MENUITEMS.SIFR
+ *   QUANTITY — количество
+ *   PAYSUM — оплаченная сумма
+ *   PRLISTSUM — сумма по прайс-листу
+ *   CREATIONDATETIME — время создания
+ *   VISIT, MIDSERVER, ORDERIDENT, UNI
+ *
+ * MENUITEMS (блюда):
+ *   SIFR, NAME, CODE, PARENT (FK на CATEGLIST.SIFR)
+ *
+ * CATEGLIST (категории меню):
+ *   SIFR, NAME, PARENT
+ *
+ * DISCOUNTS / DISCOUNTDETAILS — скидки
+ * EMPLOYEES — сотрудники
+ * RESTAURANTS — рестораны
+ * HALLPLANS — залы
+ * AWARDSPENALTIESDATA — штрафы/премии
  */
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
@@ -41,66 +79,36 @@ export interface AnalyticsFilter {
   to: Date;
 }
 
-function restCond(filter: AnalyticsFilter, column = "RestaurantId"): string {
-  // Для MS SQL — используем @restaurantId параметр
-  return filter.restaurantId ? `${column} = @restaurantId` : "1=1";
-}
-
 // ---------------------------------------------------------------------------
 // РЕСТОРАНЫ
 // ---------------------------------------------------------------------------
 
 export async function getRestaurants(): Promise<Restaurant[]> {
   if (isMssqlEnabled()) {
-    // В R-Keeper 7 таблица может называться RESTAURANTS или RESTAURANT
-    // Пробуем оба варианта
+    // R-Keeper 7: таблица RESTAURANTS
     const sqlText = `
       SELECT SIFR AS sifr, CAST(CODE AS NVARCHAR(50)) AS code, NAME AS name, '' AS address
       FROM RESTAURANTS
-      WHERE DBSTATUS <> -1 OR DBSTATUS IS NULL
+      WHERE DBSTATUS IS NULL OR DBSTATUS <> -1
       ORDER BY SIFR
     `;
     try {
       const rows = await query<{
         sifr: number; code: string; name: string; address: string | null;
       }>(sqlText);
-      if (rows.length > 0) {
-        return rows.map(r => ({
-          sifr: r.sifr,
-          code: r.code || `R${r.sifr}`,
-          name: r.name,
-          address: r.address,
-          isDark: false,
-          openTime: null,
-          closeTime: null,
-        }));
-      }
-    } catch {
-      // Если RESTAURANTS не сработало — пробуем RESTAURANT (единственное число)
-      try {
-        const rows2 = await query<{
-          sifr: number; code: string; name: string; address: string | null;
-        }>(`
-          SELECT SIFR AS sifr, CAST(CODE AS NVARCHAR(50)) AS code, NAME AS name, '' AS address
-          FROM RESTAURANT
-          WHERE DBSTATUS <> -1 OR DBSTATUS IS NULL
-          ORDER BY SIFR
-        `);
-        return rows2.map(r => ({
-          sifr: r.sifr,
-          code: r.code || `R${r.sifr}`,
-          name: r.name,
-          address: r.address,
-          isDark: false,
-          openTime: null,
-          closeTime: null,
-        }));
-      } catch (e2) {
-        console.error("Не удалось получить список ресторанов:", e2);
-        return [];
-      }
+      return rows.map(r => ({
+        sifr: r.sifr,
+        code: r.code || `R${r.sifr}`,
+        name: r.name,
+        address: r.address,
+        isDark: false,
+        openTime: null,
+        closeTime: null,
+      }));
+    } catch (e) {
+      console.error("Не удалось получить список ресторанов:", e);
+      return [];
     }
-    return [];
   }
   return await db.restaurant.findMany({ orderBy: { sifr: "asc" } });
 }
@@ -116,24 +124,23 @@ export async function getOverviewKpi(filter: AnalyticsFilter) {
       to: filter.to,
       restaurantId: filter.restaurantId || null,
     };
-    // В R-Keeper 7: PRINTCHECKS содержит чеки, поле DATETIME — время печати,
-    // SUMM — итог, DISCSUMM — сумма скидок
+    // PRINTCHECKS: CLOSEDATETIME, BASICSUM, DISCOUNTSUM, GUESTCNT, RESTAURANT
     const sqlText = `
       SELECT
-        COALESCE(SUM(pc.SUMM), 0)                   AS totalRevenue,
-        COALESCE(SUM(pc.DISCSUMM), 0)               AS totalDiscount,
+        COALESCE(SUM(pc.BASICSUM), 0)              AS totalRevenue,
+        COALESCE(SUM(pc.DISCOUNTSUM), 0)           AS totalDiscount,
         COUNT(*)                                     AS totalChecks,
-        COALESCE(SUM(v.GUESTCNT), 0)                AS totalGuests,
-        COALESCE(SUM(p.TIPSUMM), 0)                 AS totalTips,
+        COALESCE(SUM(pc.GUESTCNT), 0)              AS totalGuests,
+        COALESCE(SUM(p.BASICSUM), 0)               AS totalTips,
         COALESCE(AVG(DATEDIFF(MINUTE, v.STARTTIME, v.QUITTIME)), 0) AS avgDuration,
-        COUNT(DISTINCT CONVERT(date, pc.DATETIME))   AS daysCount
+        COUNT(DISTINCT CONVERT(date, pc.CLOSEDATETIME)) AS daysCount
       FROM PRINTCHECKS pc
-      LEFT JOIN ORDERS o  ON o.VISIT = pc.VISIT AND o.MIDSERVER = pc.MIDSERVER AND o.IDENTINVISIT = pc.ORDERIDENT
       LEFT JOIN VISITS v  ON v.SIFR = pc.VISIT AND v.MIDSERVER = pc.MIDSERVER
-      LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER AND p.ORDERIDENT = pc.ORDERIDENT AND p.CHECKUNI = pc.UNI
-      WHERE pc.DATETIME >= @from AND pc.DATETIME <= @to
+      LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
+        AND p.ORDERIDENT = pc.ORDERIDENT AND p.PRINTCHECKUNI = pc.UNI
+      WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR pc.RESTAURANT = @restaurantId)
-        AND pc.DBSTATUS <> -1
+        AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
     `;
     const r = await queryOne<{
       totalRevenue: number; totalDiscount: number; totalChecks: number;
@@ -216,15 +223,15 @@ export async function getSalesDaily(filter: AnalyticsFilter) {
   if (isMssqlEnabled()) {
     const rows = await query<{ date: string; revenue: number; checks: number; discount: number }>(`
       SELECT
-        CONVERT(date, pc.DATETIME)              AS date,
-        SUM(pc.SUMM)                            AS revenue,
+        CONVERT(date, pc.CLOSEDATETIME)         AS date,
+        SUM(pc.BASICSUM)                        AS revenue,
         COUNT(*)                                AS checks,
-        COALESCE(SUM(pc.DISCSUMM), 0)           AS discount
+        COALESCE(SUM(pc.DISCOUNTSUM), 0)        AS discount
       FROM PRINTCHECKS pc
-      WHERE pc.DATETIME >= @from AND pc.DATETIME <= @to
+      WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR pc.RESTAURANT = @restaurantId)
-        AND pc.DBSTATUS <> -1
-      GROUP BY CONVERT(date, pc.DATETIME)
+        AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
+      GROUP BY CONVERT(date, pc.CLOSEDATETIME)
       ORDER BY date
     `, {
       from: filter.from,
@@ -274,14 +281,14 @@ export async function getSalesByRestaurant(filter: AnalyticsFilter) {
         r.SIFR AS sifr,
         r.NAME AS name,
         CAST(r.CODE AS NVARCHAR(50)) AS code,
-        COALESCE(SUM(pc.SUMM), 0)         AS revenue,
-        COUNT(*)                           AS checks,
-        COALESCE(SUM(pc.DISCSUMM), 0)     AS discount
+        COALESCE(SUM(pc.BASICSUM), 0)         AS revenue,
+        COUNT(*)                               AS checks,
+        COALESCE(SUM(pc.DISCOUNTSUM), 0)       AS discount
       FROM RESTAURANTS r
       LEFT JOIN PRINTCHECKS pc ON pc.RESTAURANT = r.SIFR
-        AND pc.DATETIME >= @from AND pc.DATETIME <= @to
-        AND pc.DBSTATUS <> -1
-      WHERE r.DBSTATUS <> -1 OR r.DBSTATUS IS NULL
+        AND pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
+        AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
+      WHERE r.DBSTATUS IS NULL OR r.DBSTATUS <> -1
       GROUP BY r.SIFR, r.NAME, r.CODE
       ORDER BY r.SIFR
     `, {
@@ -330,14 +337,14 @@ export async function getSalesHourly(filter: AnalyticsFilter) {
   if (isMssqlEnabled()) {
     const rows = await query<{ dow: number; hour: number; revenue: number }>(`
       SELECT
-        DATEPART(WEEKDAY, pc.DATETIME) - 1 AS dow,
-        DATEPART(HOUR, pc.DATETIME)        AS hour,
-        SUM(pc.SUMM)                       AS revenue
+        DATEPART(WEEKDAY, pc.CLOSEDATETIME) - 1 AS dow,
+        DATEPART(HOUR, pc.CLOSEDATETIME)        AS hour,
+        SUM(pc.BASICSUM)                        AS revenue
       FROM PRINTCHECKS pc
-      WHERE pc.DATETIME >= @from AND pc.DATETIME <= @to
+      WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR pc.RESTAURANT = @restaurantId)
-        AND pc.DBSTATUS <> -1
-      GROUP BY DATEPART(WEEKDAY, pc.DATETIME) - 1, DATEPART(HOUR, pc.DATETIME)
+        AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
+      GROUP BY DATEPART(WEEKDAY, pc.CLOSEDATETIME) - 1, DATEPART(HOUR, pc.CLOSEDATETIME)
     `, {
       from: filter.from,
       to: filter.to,
@@ -428,8 +435,8 @@ function buildAbcRows<T extends { revenue: number }>(
 
 export async function getMenuAbc(filter: AnalyticsFilter): Promise<MenuAbcRow[]> {
   if (isMssqlEnabled()) {
-    // В R-Keeper 7: ITEMSSALED содержит проданные позиции,
-    // MENUITEMS — блюда, CATEGLIST — категории меню
+    // SESSIONDISHES — продажи, MENUITEMS — блюда, CATEGLIST — категории
+    // SIFR в SESSIONDISHES ссылается на MENUITEMS.SIFR
     const rows = await query<{
       dishId: number; name: string; code: string; category: string;
       price: number; costPrice: number; quantity: number;
@@ -443,22 +450,20 @@ export async function getMenuAbc(filter: AnalyticsFilter): Promise<MenuAbcRow[]>
         ''               AS cuisine,
         0                AS price,
         0                AS costPrice,
-        SUM(i.QUANTITY)  AS quantity,
-        SUM(i.SUMM)      AS revenue,
+        SUM(s.QUANTITY)  AS quantity,
+        SUM(s.PAYSUM)    AS revenue,
         0                AS cost,
-        SUM(i.DISCSUMM)  AS discount
-      FROM ITEMSSALED i
-      JOIN MENUITEMS d ON d.SIFR = i.DISHID
+        0                AS discount
+      FROM SESSIONDISHES s
+      JOIN MENUITEMS d ON d.SIFR = s.SIFR
       LEFT JOIN CATEGLIST c ON c.SIFR = d.PARENT
-      WHERE i.DATETIME >= @from AND i.DATETIME <= @to
-        AND (@restaurantId IS NULL OR i.RESTAURANT = @restaurantId)
-        AND i.DBSTATUS <> -1
+      WHERE s.CREATIONDATETIME >= @from AND s.CREATIONDATETIME <= @to
+        AND (s.DBSTATUS IS NULL OR s.DBSTATUS <> -1)
       GROUP BY d.SIFR, d.NAME, d.CODE, c.NAME
       ORDER BY revenue DESC
     `, {
       from: filter.from,
       to: filter.to,
-      restaurantId: filter.restaurantId || null,
     });
     return buildAbcRows(rows.map(r => ({
       dishId: r.dishId,
@@ -543,17 +548,16 @@ export async function getMenuByCategory(filter: AnalyticsFilter) {
 
 export async function getDiscountsSummary(filter: AnalyticsFilter) {
   if (isMssqlEnabled()) {
-    // R-Keeper 7: DISCOUNTDETAILS — применения скидок, DISCOUNTS — справочник
     const totals = await queryOne<{ totalRevenue: number; totalDiscount: number; totalChecks: number; checksWithDiscount: number }>(`
       SELECT
-        COALESCE(SUM(pc.SUMM), 0)               AS totalRevenue,
-        COALESCE(SUM(pc.DISCSUMM), 0)           AS totalDiscount,
-        COUNT(*)                                 AS totalChecks,
-        SUM(CASE WHEN pc.DISCSUMM > 0 THEN 1 ELSE 0 END) AS checksWithDiscount
+        COALESCE(SUM(pc.BASICSUM), 0)              AS totalRevenue,
+        COALESCE(SUM(pc.DISCOUNTSUM), 0)           AS totalDiscount,
+        COUNT(*)                                     AS totalChecks,
+        SUM(CASE WHEN pc.DISCOUNTSUM > 0 THEN 1 ELSE 0 END) AS checksWithDiscount
       FROM PRINTCHECKS pc
-      WHERE pc.DATETIME >= @from AND pc.DATETIME <= @to
+      WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR pc.RESTAURANT = @restaurantId)
-        AND pc.DBSTATUS <> -1
+        AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
     `, {
       from: filter.from,
       to: filter.to,
@@ -570,19 +574,17 @@ export async function getDiscountsSummary(filter: AnalyticsFilter) {
         ''    AS kind,
         0     AS value,
         COUNT(*)    AS count,
-        SUM(dd.SUMM) AS sum,
+        SUM(dd.AMOUNT) AS sum,
         0     AS cards
       FROM DISCOUNTDETAILS dd
-      JOIN DISCOUNTS d ON d.SIFR = dd.DISCOUNTSIFR
+      JOIN DISCOUNTS d ON d.SIFR = dd.DISCOUNT
       WHERE dd.DATETIME >= @from AND dd.DATETIME <= @to
-        AND (@restaurantId IS NULL OR dd.RESTAURANT = @restaurantId)
-        AND dd.DBSTATUS <> -1
+        AND (dd.DBSTATUS IS NULL OR dd.DBSTATUS <> -1)
       GROUP BY d.SIFR, d.NAME, d.CODE
       ORDER BY sum DESC
     `, {
       from: filter.from,
       to: filter.to,
-      restaurantId: filter.restaurantId || null,
     });
 
     const totalRevenue = Number(totals.totalRevenue);
@@ -676,10 +678,10 @@ export async function getStaffPerformance(filter: AnalyticsFilter) {
         e.NAME          AS name,
         ''              AS position,
         0               AS restaurantId,
-        COALESCE(SUM(pc.SUMM), 0)         AS revenue,
-        COUNT(DISTINCT o.IDENTINVISIT)     AS orders,
-        COALESCE(SUM(v.GUESTCNT), 0)      AS guests,
-        COALESCE(SUM(pc.DISCSUMM), 0)     AS discount
+        COALESCE(SUM(pc.BASICSUM), 0)         AS revenue,
+        COUNT(DISTINCT o.IDENTINVISIT)         AS orders,
+        COALESCE(SUM(v.GUESTCNT), 0)          AS guests,
+        COALESCE(SUM(pc.DISCOUNTSUM), 0)       AS discount
       FROM ORDERS o
       JOIN EMPLOYEES e ON e.SIFR = o.ICREATOR
       LEFT JOIN PRINTCHECKS pc ON pc.VISIT = o.VISIT AND pc.MIDSERVER = o.MIDSERVER AND pc.ORDERIDENT = o.IDENTINVISIT
@@ -687,7 +689,7 @@ export async function getStaffPerformance(filter: AnalyticsFilter) {
       WHERE o.OPENTIME >= @from AND o.OPENTIME <= @to
         AND (@restaurantId IS NULL OR o.RESTAURANT = @restaurantId)
         AND o.ICREATOR IS NOT NULL
-        AND o.DBSTATUS <> -1
+        AND (o.DBSTATUS IS NULL OR o.DBSTATUS <> -1)
       GROUP BY e.SIFR, e.NAME
       ORDER BY revenue DESC
     `, {
@@ -707,7 +709,7 @@ export async function getStaffPerformance(filter: AnalyticsFilter) {
         SUM(AMOUNT) AS net
       FROM AWARDSPENALTIESDATA
       WHERE DATETIME >= @from AND DATETIME <= @to
-        AND DBSTATUS <> -1
+        AND (DBSTATUS IS NULL OR DBSTATUS <> -1)
       GROUP BY OPERATOR
     `, {
       from: filter.from,
@@ -821,7 +823,7 @@ export async function getHallHeatmap(filter: AnalyticsFilter) {
       FROM VISITS v
       WHERE v.STARTTIME >= @from AND v.STARTTIME <= @to
         AND (@restaurantId IS NULL OR v.RESTAURANT = @restaurantId)
-        AND v.DBSTATUS <> -1
+        AND (v.DBSTATUS IS NULL OR v.DBSTATUS <> -1)
       GROUP BY DATEPART(WEEKDAY, v.STARTTIME) - 1, DATEPART(HOUR, v.STARTTIME)
     `, {
       from: filter.from,
@@ -839,11 +841,11 @@ export async function getHallHeatmap(filter: AnalyticsFilter) {
       SELECT
         COUNT(*)                       AS totalVisits,
         COALESCE(SUM(DATEDIFF(MINUTE, v.STARTTIME, v.QUITTIME)), 0) AS totalDuration,
-        (SELECT COUNT(*) FROM HALLPLANS WHERE DBSTATUS <> -1) AS totalTables
+        (SELECT COUNT(*) FROM HALLPLANS WHERE DBSTATUS IS NULL OR DBSTATUS <> -1) AS totalTables
       FROM VISITS v
       WHERE v.STARTTIME >= @from AND v.STARTTIME <= @to
         AND (@restaurantId IS NULL OR v.RESTAURANT = @restaurantId)
-        AND v.DBSTATUS <> -1
+        AND (v.DBSTATUS IS NULL OR v.DBSTATUS <> -1)
     `, {
       from: filter.from,
       to: filter.to,
@@ -866,7 +868,7 @@ export async function getHallHeatmap(filter: AnalyticsFilter) {
       WHERE o.OPENTIME >= @from AND o.OPENTIME <= @to
         AND o.TABLEID IS NOT NULL
         AND (@restaurantId IS NULL OR o.RESTAURANT = @restaurantId)
-        AND o.DBSTATUS <> -1
+        AND (o.DBSTATUS IS NULL OR o.DBSTATUS <> -1)
       GROUP BY o.TABLENAME, h.NAME
       ORDER BY visits DESC
     `, {
@@ -964,28 +966,36 @@ export async function getHallHeatmap(filter: AnalyticsFilter) {
 
 export async function getPaymentsSummary(filter: AnalyticsFilter) {
   if (isMssqlEnabled()) {
-    // В R-Keeper 7: PAYMENTS содержит оплаты
-    // PAYTYPE → PAYTYPES (типы оплат), SUMM — сумма, TIPSUMM — чаевые
+    // PAYMENTS: BASICSUM, PAYLINETYPE (enum)
+    // PAYLINETYPE: 0=pltCash, 1=pltCrCard, 2=pltHotel, 3=pltPayCard,
+    //              4=pltCashExclude, 5=pltOtherNonCash, 6=pltOneDishOnly, 7=pltTare
     const rows = await query<{
       type: string; typeName: string; amount: number; tips: number; count: number;
     }>(`
       SELECT
-        CAST(pt.CODE AS NVARCHAR(50)) AS type,
-        COALESCE(pt.NAME, 'Неизвестно') AS typeName,
-        SUM(p.SUMM)    AS amount,
-        SUM(p.TIPSUMM) AS tips,
-        COUNT(*)       AS count
+        CAST(p.PAYLINETYPE AS NVARCHAR(10)) AS type,
+        CASE p.PAYLINETYPE
+          WHEN 0 THEN 'Наличные'
+          WHEN 1 THEN 'Банковская карта'
+          WHEN 2 THEN 'Карта отеля'
+          WHEN 3 THEN 'Платёжная карта'
+          WHEN 4 THEN 'Сдача (фикт.)'
+          WHEN 5 THEN 'Прочий безнал'
+          WHEN 6 THEN 'Купон на блюдо'
+          WHEN 7 THEN 'Тара'
+          ELSE 'Тип ' + CAST(p.PAYLINETYPE AS NVARCHAR(10))
+        END AS typeName,
+        SUM(p.BASICSUM)    AS amount,
+        0                  AS tips,
+        COUNT(*)           AS count
       FROM PAYMENTS p
-      LEFT JOIN PAYTYPES pt ON pt.SIFR = p.PAYTYPE
       WHERE p.DATETIME >= @from AND p.DATETIME <= @to
-        AND (@restaurantId IS NULL OR p.RESTAURANT = @restaurantId)
-        AND p.DBSTATUS <> -1
-      GROUP BY pt.CODE, pt.NAME
+        AND (p.DBSTATUS IS NULL OR p.DBSTATUS <> -1)
+      GROUP BY p.PAYLINETYPE
       ORDER BY amount DESC
     `, {
       from: filter.from,
       to: filter.to,
-      restaurantId: filter.restaurantId || null,
     });
     const byType = rows.map((r) => ({
       type: r.type || "UNKNOWN",
@@ -1048,20 +1058,18 @@ export async function getPaymentsSummary(filter: AnalyticsFilter) {
 
 export async function getFiscalSummary(filter: AnalyticsFilter) {
   if (isMssqlEnabled()) {
-    // В R-Keeper 7: TAXPARTS — налоговые части по позициям
-    // Используем ITEMSSALED + MENUITEMS для расчёта базы (алкоголь/не алкоголь)
+    // PRINTCHECKS: BASICSUM, TAXSUM, TAXSUMADDED
     const rows = await query<{
       totalSum: number; vatBase20: number; vatBase0: number;
     }>(`
       SELECT
-        COALESCE(SUM(i.SUMM), 0)                                          AS totalSum,
-        COALESCE(SUM(CASE WHEN d.ISTAXFREESALE = 1 THEN i.SUMM ELSE 0 END), 0) AS vatBase0,
-        COALESCE(SUM(CASE WHEN d.ISTAXFREESALE = 0 THEN i.SUMM ELSE 0 END), 0) AS vatBase20
-      FROM ITEMSSALED i
-      JOIN MENUITEMS d ON d.SIFR = i.DISHID
-      WHERE i.DATETIME >= @from AND i.DATETIME <= @to
-        AND (@restaurantId IS NULL OR i.RESTAURANT = @restaurantId)
-        AND i.DBSTATUS <> -1
+        COALESCE(SUM(pc.BASICSUM), 0)              AS totalSum,
+        COALESCE(SUM(pc.BASICSUM - pc.TAXSUM), 0)   AS vatBase20,
+        0                                            AS vatBase0
+      FROM PRINTCHECKS pc
+      WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
+        AND (@restaurantId IS NULL OR pc.RESTAURANT = @restaurantId)
+        AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
     `, {
       from: filter.from,
       to: filter.to,
@@ -1074,32 +1082,19 @@ export async function getFiscalSummary(filter: AnalyticsFilter) {
     const vat20 = vatBase20 * 20 / 120;
     const vat0 = 0;
 
-    const opRows = await query<{ kind: string; count: number }>(`
-      SELECT TOP 50 'CHECK' AS kind, COUNT(*) AS count
-      FROM PRINTCHECKS pc
-      WHERE pc.DATETIME >= @from AND pc.DATETIME <= @to
-        AND (@restaurantId IS NULL OR pc.RESTAURANT = @restaurantId)
-        AND pc.DBSTATUS <> -1
-      GROUP BY pc.STATION
-    `, {
-      from: filter.from,
-      to: filter.to,
-      restaurantId: filter.restaurantId || null,
-    });
-
     const recentOps = await query<{
       kind: string; description: string; createdAt: Date; operatorId: number | null;
     }>(`
       SELECT TOP 50
         'CHECK' AS kind,
         'Чек ' + CAST(pc.UNI AS NVARCHAR(20)) AS description,
-        pc.DATETIME AS createdAt,
-        pc.OPERATOR AS operatorId
+        pc.CLOSEDATETIME AS createdAt,
+        pc.ICREATOR AS operatorId
       FROM PRINTCHECKS pc
-      WHERE pc.DATETIME >= @from AND pc.DATETIME <= @to
+      WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR pc.RESTAURANT = @restaurantId)
-        AND pc.DBSTATUS <> -1
-      ORDER BY pc.DATETIME DESC
+        AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
+      ORDER BY pc.CLOSEDATETIME DESC
     `, {
       from: filter.from,
       to: filter.to,
@@ -1113,7 +1108,7 @@ export async function getFiscalSummary(filter: AnalyticsFilter) {
       vat20: Math.round(vat20 * 100) / 100,
       vat0,
       vatTotal: Math.round((vat20 + vat0) * 100) / 100,
-      operationsByKind: opRows.map((o) => ({ kind: o.kind, count: Number(o.count) })),
+      operationsByKind: [{ kind: "CHECK", count: recentOps.length }],
       recentOps: recentOps.map((o) => ({
         kind: o.kind,
         description: o.description,
