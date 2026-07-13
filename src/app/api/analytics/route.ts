@@ -53,6 +53,17 @@ export async function GET(req: NextRequest) {
         return NextResponse.json(await getRestaurants());
       case "overview":
         return NextResponse.json(await getOverviewKpi(filter));
+      case "overview-compare": {
+        const prevFilter = { ...filter };
+        const diff = filter.to.getTime() - filter.from.getTime();
+        prevFilter.to = new Date(filter.from.getTime() - 1);
+        prevFilter.from = new Date(prevFilter.to.getTime() - diff);
+        const [current, previous] = await Promise.all([
+          getOverviewKpi(filter),
+          getOverviewKpi(prevFilter),
+        ]);
+        return NextResponse.json({ current, previous });
+      }
       case "sales-daily":
         return NextResponse.json(await getSalesDaily(filter));
       case "sales-by-restaurant":

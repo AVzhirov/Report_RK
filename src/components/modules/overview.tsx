@@ -44,14 +44,23 @@ interface AbcRow {
 
 const CHART_COLORS = ["#6B1218", "#C9A24B", "#8C2530", "#2A5C3D", "#B5651D", "#4A2C5A", "#D9534F"];
 
+interface CompareData { current: OverviewData; previous: OverviewData }
+
+function deltaPct(curr: number, prev: number): number | null {
+  if (!prev || prev === 0) return null;
+  return Math.round(((curr - prev) / prev) * 1000) / 10;
+}
+
 export function OverviewModule() {
   const { data: kpi, loading: kpiLoading, error: kpiErr } = useAnalytics<OverviewData>("overview");
+  const { data: compare } = useAnalytics<CompareData>("overview-compare");
   const { data: daily, loading: dailyLoading, error: dailyErr } = useAnalytics<SalesDaily[]>("sales-daily");
   const { data: byRest, loading: byRestLoading } = useAnalytics<{ name: string; revenue: number; checks: number; avgCheck: number }[]>("sales-by-restaurant");
   const { data: topDishes, loading: topLoading } = useAnalytics<AbcRow[]>("menu-abc");
   const { data: hourly, loading: hourLoading } = useAnalytics<HourlyData>("sales-hourly");
 
   const hasData = kpi ? kpi.totalChecks > 0 : false;
+  const prev = compare?.previous;
 
   return (
     <div className="space-y-5">
@@ -77,13 +86,17 @@ export function OverviewModule() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard label="Выручка" value={formatRub(kpi.totalRevenue)}
-            icon={TrendingUp} hint={`${kpi.daysCount} дней в выборке`} />
+            icon={TrendingUp} hint={`${kpi.daysCount} дней в выборке`}
+            delta={prev ? deltaPct(kpi.totalRevenue, prev.totalRevenue) : undefined} />
           <KpiCard label="Средний чек" value={formatRub(kpi.avgCheck)}
-            icon={ShoppingBag} hint={`${formatNum(kpi.totalChecks, 0)} чеков`} />
+            icon={ShoppingBag} hint={`${formatNum(kpi.totalChecks, 0)} чеков`}
+            delta={prev ? deltaPct(kpi.avgCheck, prev.avgCheck) : undefined} />
           <KpiCard label="Гостей" value={formatNum(kpi.totalGuests, 0)}
-            icon={Users} hint={`${formatRub(kpi.revenuePerGuest)} на гостя`} />
+            icon={Users} hint={`${formatRub(kpi.revenuePerGuest)} на гостя`}
+            delta={prev ? deltaPct(kpi.totalGuests, prev.totalGuests) : undefined} />
           <KpiCard label="Среднее время визита" value={`${Math.round(kpi.avgDuration)} мин`}
-            icon={Clock} hint={`За ${kpi.daysCount} дней`} />
+            icon={Clock} hint={`За ${kpi.daysCount} дней`}
+            delta={prev ? deltaPct(kpi.avgDuration, prev.avgDuration) : undefined} />
         </div>
       )}
 

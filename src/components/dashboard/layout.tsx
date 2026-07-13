@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   UtensilsCrossed, LayoutDashboard, TrendingUp, UtensilsCrossed as MenuIcon,
   Percent, Users, LayoutGrid, CreditCard, LineChart, LogOut,
-  ChevronDown, Store, Settings as SettingsIcon,
+  ChevronDown, Store, Settings as SettingsIcon, Sun, Moon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -39,13 +39,17 @@ export const MODULES: ModuleMeta[] = [
 ];
 
 const PRESETS: { id: DatePreset; label: string }[] = [
-  { id: "7d",   label: "7 дней" },
-  { id: "14d",  label: "14 дней" },
-  { id: "30d",  label: "30 дней" },
-  { id: "90d",  label: "Квартал" },
-  { id: "180d", label: "Полгода" },
-  { id: "365d", label: "Год" },
-  { id: "custom", label: "Свой период" },
+  { id: "today",     label: "Сегодня" },
+  { id: "yesterday", label: "Вчера" },
+  { id: "7d",        label: "7 дней" },
+  { id: "14d",       label: "14 дней" },
+  { id: "30d",       label: "30 дней" },
+  { id: "thisMonth", label: "Этот месяц" },
+  { id: "lastMonth", label: "Прошлый месяц" },
+  { id: "90d",       label: "Квартал" },
+  { id: "180d",      label: "Полгода" },
+  { id: "365d",      label: "Год" },
+  { id: "custom",    label: "Свой период" },
 ];
 
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -192,6 +196,25 @@ export function DashboardLayout({
                 {MODULES.find(m => m.id === activeModule)?.desc}
               </p>
             </div>
+
+            {/* Тёмная тема */}
+            <button
+              onClick={() => {
+                const isDark = document.documentElement.classList.contains("dark");
+                if (isDark) {
+                  document.documentElement.classList.remove("dark");
+                  localStorage.setItem("rk7-theme", "light");
+                } else {
+                  document.documentElement.classList.add("dark");
+                  localStorage.setItem("rk7-theme", "dark");
+                }
+              }}
+              className="p-2 rounded-md hover:bg-muted transition-colors"
+              title="Сменить тему"
+            >
+              <Sun className="w-4 h-4 hidden dark:block" />
+              <Moon className="w-4 h-4 block dark:hidden" />
+            </button>
 
             {/* Фильтр ресторана */}
             <div className="flex items-center gap-2">
