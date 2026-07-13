@@ -140,6 +140,7 @@ export async function getOverviewKpi(filter: AnalyticsFilter) {
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
+        AND (pc.DELETED IS NULL OR pc.DELETED = 0)
     `;
     const r = await queryOne<{
       totalRevenue: number; totalDiscount: number; totalChecks: number;
@@ -230,6 +231,7 @@ export async function getSalesDaily(filter: AnalyticsFilter) {
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
+        AND (pc.DELETED IS NULL OR pc.DELETED = 0)
       GROUP BY CONVERT(date, pc.CLOSEDATETIME)
       ORDER BY date
     `, {
@@ -290,6 +292,7 @@ export async function getSalesByRestaurant(filter: AnalyticsFilter) {
         JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
         WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
           AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
+        AND (pc.DELETED IS NULL OR pc.DELETED = 0)
       ) x ON x.restId = r.SIFR
       GROUP BY r.SIFR, r.NAME, r.CODE
       ORDER BY r.SIFR
@@ -347,6 +350,7 @@ export async function getSalesHourly(filter: AnalyticsFilter) {
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
+        AND (pc.DELETED IS NULL OR pc.DELETED = 0)
       GROUP BY DATEPART(WEEKDAY, pc.CLOSEDATETIME) - 1, DATEPART(HOUR, pc.CLOSEDATETIME)
     `, {
       from: filter.from,
@@ -464,6 +468,8 @@ export async function getMenuAbc(filter: AnalyticsFilter): Promise<MenuAbcRow[]>
       WHERE s.CREATIONDATETIME >= @from AND s.CREATIONDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (s.DBSTATUS IS NULL OR s.DBSTATUS <> -1)
+        AND (s.STATE IS NULL OR s.STATE <> 7)
+        AND s.QUANTITY <> 0
       GROUP BY d.SIFR, d.NAME, d.CODE, c.NAME
       ORDER BY revenue DESC
     `, {
@@ -565,6 +571,7 @@ export async function getDiscountsSummary(filter: AnalyticsFilter) {
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
+        AND (pc.DELETED IS NULL OR pc.DELETED = 0)
     `, {
       from: filter.from,
       to: filter.to,
@@ -592,6 +599,7 @@ export async function getDiscountsSummary(filter: AnalyticsFilter) {
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (dd.DBSTATUS IS NULL OR dd.DBSTATUS <> -1)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
+        AND (pc.DELETED IS NULL OR pc.DELETED = 0)
       GROUP BY d.SIFR, d.NAME, d.CODE
       ORDER BY sum DESC
     `, {
@@ -1018,6 +1026,7 @@ export async function getPaymentsSummary(filter: AnalyticsFilter) {
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (p.DBSTATUS IS NULL OR p.DBSTATUS <> -1)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
+        AND (pc.DELETED IS NULL OR pc.DELETED = 0)
       GROUP BY p.PAYLINETYPE
       ORDER BY amount DESC
     `, {
@@ -1105,6 +1114,7 @@ export async function getVoidsSummary(filter: AnalyticsFilter) {
            AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
            AND pc.DELETED = 1
            AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
+        AND (pc.DELETED IS NULL OR pc.DELETED = 0)
         ) AS deletedChecks
     `, {
       from: filter.from,
