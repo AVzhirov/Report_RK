@@ -586,13 +586,19 @@ export async function getDiscountsSummary(filter: AnalyticsFilter) {
         0     AS cards
       FROM DISCOUNTDETAILS dd
       JOIN DISCOUNTS d ON d.SIFR = dd.DISCOUNT
-      WHERE dd.DATETIME >= @from AND dd.DATETIME <= @to
+      JOIN PRINTCHECKS pc ON pc.VISIT = dd.VISIT AND pc.MIDSERVER = dd.MIDSERVER
+        AND pc.ORDERIDENT = dd.ORDERIDENT AND pc.UNI = dd.CHECKUNI
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
+      WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
+        AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (dd.DBSTATUS IS NULL OR dd.DBSTATUS <> -1)
+        AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
       GROUP BY d.SIFR, d.NAME, d.CODE
       ORDER BY sum DESC
     `, {
       from: filter.from,
       to: filter.to,
+      restaurantId: filter.restaurantId || null,
     });
 
     const totalRevenue = Number(totals.totalRevenue);

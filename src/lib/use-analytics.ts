@@ -1,37 +1,79 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useFilter } from "@/lib/filter-store";
 
 /**
  * Хук для запроса к /api/analytics?module=... с учётом глобальных фильтров.
  * Возвращает { data, loading, error, refetch }.
+ *
+ * АВТООБНОВЛЕНИЕ: при смене периода (preset/customFrom/customTo) или ресторана
+ * (restaurantId) хук автоматически перезапрашивает данные. Сравнение делается
+ * по строке параметров (toParams()), поэтому любое изменение фильтра вызывает
+ * повторный fetch.
  */
 export function useAnalytics<T = unknown>(module: string, enabled = true) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Подписываемся на ВСЕ поля фильтра, чтобы реагировать на любое изменение
+  const restaurantId = useFilter((s) => s.restaurantId);
+  const preset = useFilter((s) => s.preset);
+  const customFrom = useFilter((s) => s.customFrom);
+  const customTo = useFilter((s) => s.customTo);
   const toParams = useFilter((s) => s.toParams);
+
+  // Формируем строку параметров — меняется при любом изменении фильтра
+  const paramsKey = toParams();
+
+  const abortRef = useRef<AbortController | null>(null);
 
   const fetchIt = useCallback(async () => {
     if (!enabled) return;
+    // Отменяем предыдущий запрос (если был)
+    if (abortRef.current) abortRef.current.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/analytics?module=${module}&${toParams()}`, { cache: "no-store" });
+      const res = await fetch(`/api/analytics?module=${module}&${paramsKey}`, {
+        cache: "no-store",
+        signal: ac.signal,
+      });
       if (!res.ok) {
+        // Проверяем что ответ JSON, а не HTML (404/500 страница Next.js)
+        const contentType = res.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          const text = await res.text().catch(() => "");
+          const preview = text.slice(0, 200).replace(/\s+/g, " ").trim();
+          throw new Error(`Сервер вернул HTML (HTTP ${res.status}). ${preview}`);
+        }
         const j = await res.json().catch(() => ({ error: res.statusText }));
         throw new Error(j.error || `HTTP ${res.status}`);
       }
       const json = await res.json();
       setData(json);
     } catch (e: unknown) {
+      // AbortError — не показываем (это отмена предыдущего запроса)
+      if (e instanceof Error && e.name === "AbortError") return;
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      // Сбрасываем loading только если это последний запрос
+      if (abortRef.current === ac) {
+        setLoading(false);
+      }
     }
-  }, [module, toParams, enabled]);
+  }, [module, paramsKey, enabled]);
 
-  useEffect(() => { fetchIt(); }, [fetchIt]);
+  useEffect(() => {
+    fetchIt();
+    // Cleanup: отменяем запрос при размонтировании
+    return () => {
+      if (abortRef.current) abortRef.current.abort();
+    };
+  }, [fetchIt]);
 
   return { data, loading, error, refetch: fetchIt };
 }
