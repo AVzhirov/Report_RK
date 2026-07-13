@@ -131,13 +131,11 @@ export async function getOverviewKpi(filter: AnalyticsFilter) {
         COALESCE(SUM(pc.DISCOUNTSUM), 0)           AS totalDiscount,
         COUNT(*)                                     AS totalChecks,
         COALESCE(SUM(pc.GUESTCNT), 0)              AS totalGuests,
-        COALESCE(SUM(p.BASICSUM), 0)               AS totalTips,
+        0                                            AS totalTips,
         COALESCE(AVG(DATEDIFF(MINUTE, v.STARTTIME, v.QUITTIME)), 0) AS avgDuration,
         COUNT(DISTINCT CONVERT(date, pc.CLOSEDATETIME)) AS daysCount
       FROM PRINTCHECKS pc
       LEFT JOIN VISITS v  ON v.SIFR = pc.VISIT AND v.MIDSERVER = pc.MIDSERVER
-      LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
-        AND p.ORDERIDENT = pc.ORDERIDENT AND p.PRINTCHECKUNI = pc.UNI
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
@@ -180,12 +178,11 @@ export async function getOverviewKpi(filter: AnalyticsFilter) {
       COALESCE(SUM(pc.discountSum), 0)               AS totalDiscount,
       COUNT(*)                                        AS totalChecks,
       COALESCE(SUM(v.guestsCount), 0)                AS totalGuests,
-      COALESCE(SUM(p.tipAmount), 0)                  AS totalTips,
+      0                                               AS totalTips,
       COALESCE(AVG(v.durationMin), 0)                AS avgDuration
     FROM PrintCheck pc
     LEFT JOIN "Order" o  ON o.id = pc.orderId
     LEFT JOIN Visit v    ON v.sifr = o.visitSifr
-    LEFT JOIN Payment p  ON p.checkUni = pc.uni
     WHERE pc.printTime >= ${from} AND pc.printTime <= ${to}
       AND ${Prisma.raw(restCondStr)}
   `);
@@ -1044,11 +1041,10 @@ export async function getPaymentsSummary(filter: AnalyticsFilter) {
   // SQLite
   const from = filter.from.toISOString();
   const to = filter.to.toISOString();
-  const rows = await db.$queryRaw<{ type: string; typeName: string; amount: number; tips: number; count: number }[]>(Prisma.sql`
+  const rows = await db.$queryRaw<{ type: string; typeName: string; amount: number; count: number }[]>(Prisma.sql`
     SELECT
       type, typeName,
       SUM(amount)    AS amount,
-      SUM(tipAmount) AS tips,
       COUNT(*)       AS count
     FROM Payment
     WHERE paidAt >= ${from} AND paidAt <= ${to}
@@ -1060,139 +1056,17 @@ export async function getPaymentsSummary(filter: AnalyticsFilter) {
     type: r.type,
     typeName: r.typeName,
     amount: Math.round(Number(r.amount) * 100) / 100,
-    tips: Math.round(Number(r.tips) * 100) / 100,
+    tips: 0,
     count: Number(r.count),
   }));
   const totalAmount = byType.reduce((s, r) => s + r.amount, 0);
-  const totalTips = byType.reduce((s, r) => s + r.tips, 0);
 
   return {
     totalAmount: Math.round(totalAmount * 100) / 100,
-    totalTips: Math.round(totalTips * 100) / 100,
+    totalTips: 0,
     byType: byType.map((r) => ({
       ...r,
       share: totalAmount > 0 ? Math.round((r.amount / totalAmount) * 1000) / 10 : 0,
-    })),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// НАЛОГИ / ФИСКАЛ
-// ---------------------------------------------------------------------------
-
-export async function getFiscalSummary(filter: AnalyticsFilter) {
-  if (isMssqlEnabled()) {
-    // PRINTCHECKS: BASICSUM, TAXSUM, TAXSUMADDED
-    const rows = await query<{
-      totalSum: number; vatBase20: number; vatBase0: number;
-    }>(`
-      SELECT
-        COALESCE(SUM(pc.BASICSUM), 0)              AS totalSum,
-        COALESCE(SUM(pc.BASICSUM - pc.TAXSUM), 0)   AS vatBase20,
-        0                                            AS vatBase0
-      FROM PRINTCHECKS pc
-      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
-      WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
-        AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
-        AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
-    `, {
-      from: filter.from,
-      to: filter.to,
-      restaurantId: filter.restaurantId || null,
-    });
-    const r = rows[0] || { totalSum: 0, vatBase20: 0, vatBase0: 0 };
-    const totalSum = Number(r.totalSum);
-    const vatBase20 = Number(r.vatBase20);
-    const vatBase0 = Number(r.vatBase0);
-    const vat20 = vatBase20 * 20 / 120;
-    const vat0 = 0;
-
-    const recentOps = await query<{
-      kind: string; description: string; createdAt: Date; operatorId: number | null;
-    }>(`
-      SELECT TOP 50
-        'CHECK' AS kind,
-        'Чек ' + CAST(pc.UNI AS NVARCHAR(20)) AS description,
-        pc.CLOSEDATETIME AS createdAt,
-        pc.ICREATOR AS operatorId
-      FROM PRINTCHECKS pc
-      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
-      WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
-        AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
-        AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
-      ORDER BY pc.CLOSEDATETIME DESC
-    `, {
-      from: filter.from,
-      to: filter.to,
-      restaurantId: filter.restaurantId || null,
-    });
-
-    return {
-      totalSum: Math.round(totalSum * 100) / 100,
-      vatBase20: Math.round(vatBase20 * 100) / 100,
-      vatBase0: Math.round(vatBase0 * 100) / 100,
-      vat20: Math.round(vat20 * 100) / 100,
-      vat0,
-      vatTotal: Math.round((vat20 + vat0) * 100) / 100,
-      operationsByKind: [{ kind: "CHECK", count: recentOps.length }],
-      recentOps: recentOps.map((o) => ({
-        kind: o.kind,
-        description: o.description,
-        createdAt: o.createdAt instanceof Date ? o.createdAt.toISOString() : String(o.createdAt),
-        operatorId: o.operatorId,
-      })),
-    };
-  }
-
-  // SQLite
-  const from = filter.from.toISOString();
-  const to = filter.to.toISOString();
-  const rows = await db.$queryRaw<{ totalSum: number; vatBase20: number; vatBase0: number }[]>(Prisma.sql`
-    SELECT
-      COALESCE(SUM(i.sum), 0)                                          AS totalSum,
-      COALESCE(SUM(CASE WHEN d.isAlcohol = 0 THEN i.sum ELSE 0 END), 0) AS vatBase20,
-      COALESCE(SUM(CASE WHEN d.isAlcohol = 1 THEN i.sum ELSE 0 END), 0) AS vatBase0
-    FROM ItemsSaled i
-    JOIN Dish d ON d.sifr = i.dishId
-    WHERE i.soldAt >= ${from} AND i.soldAt <= ${to}
-      AND ${Prisma.raw(filter.restaurantId ? `i.restaurantId = ${filter.restaurantId}` : "1=1")}
-  `);
-  const r = rows[0] || { totalSum: 0, vatBase20: 0, vatBase0: 0 };
-  const totalSum = Number(r.totalSum);
-  const vatBase20 = Number(r.vatBase20);
-  const vatBase0 = Number(r.vatBase0);
-  const vat20 = vatBase20 * 20 / 120;
-  const vat0 = 0;
-
-  const opRows = await db.$queryRaw<{ kind: string; count: number }[]>(Prisma.sql`
-    SELECT kind, COUNT(*) AS count
-    FROM OperationLog
-    WHERE createdAt >= ${from} AND createdAt <= ${to}
-      AND ${Prisma.raw(filter.restaurantId ? `restaurantId = ${filter.restaurantId}` : "1=1")}
-    GROUP BY kind
-  `);
-  const recentOps = await db.$queryRaw<{ kind: string; description: string; createdAt: string; operatorId: number | null }[]>(Prisma.sql`
-    SELECT kind, description, createdAt, operatorId
-    FROM OperationLog
-    WHERE createdAt >= ${from} AND createdAt <= ${to}
-      AND ${Prisma.raw(filter.restaurantId ? `restaurantId = ${filter.restaurantId}` : "1=1")}
-    ORDER BY createdAt DESC
-    LIMIT 50
-  `);
-
-  return {
-    totalSum: Math.round(totalSum * 100) / 100,
-    vatBase20: Math.round(vatBase20 * 100) / 100,
-    vatBase0: Math.round(vatBase0 * 100) / 100,
-    vat20: Math.round(vat20 * 100) / 100,
-    vat0,
-    vatTotal: Math.round((vat20 + vat0) * 100) / 100,
-    operationsByKind: opRows.map((o) => ({ kind: o.kind, count: Number(o.count) })),
-    recentOps: recentOps.map((o) => ({
-      kind: o.kind,
-      description: o.description,
-      createdAt: o.createdAt,
-      operatorId: o.operatorId,
     })),
   };
 }

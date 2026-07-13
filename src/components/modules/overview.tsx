@@ -2,7 +2,7 @@
 import { Fragment } from "react";
 import { useAnalytics, formatRub, formatNum, formatDate } from "@/lib/use-analytics";
 import { KpiCard, SectionCard, LoadingBlock, ErrorBlock, AbcBadge } from "@/components/analytics/common";
-import { TrendingUp, ShoppingBag, Users, Clock, Percent, Coins, AlertTriangle } from "lucide-react";
+import { TrendingUp, ShoppingBag, Users, Clock, Percent, AlertTriangle } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
   BarChart, Bar, PieChart, Pie, Cell, Legend, LineChart, Line,
@@ -82,8 +82,8 @@ export function OverviewModule() {
             icon={ShoppingBag} hint={`${formatNum(kpi.totalChecks, 0)} чеков`} />
           <KpiCard label="Гостей" value={formatNum(kpi.totalGuests, 0)}
             icon={Users} hint={`${formatRub(kpi.revenuePerGuest)} на гостя`} />
-          <KpiCard label="Чаевые" value={formatRub(kpi.totalTips)}
-            icon={Coins} hint={`Среднее время: ${Math.round(kpi.avgDuration)} мин`} />
+          <KpiCard label="Среднее время визита" value={`${Math.round(kpi.avgDuration)} мин`}
+            icon={Clock} hint={`За ${kpi.daysCount} дней`} />
         </div>
       )}
 

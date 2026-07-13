@@ -12,7 +12,6 @@ import {
   getStaffPerformance,
   getHallHeatmap,
   getPaymentsSummary,
-  getFiscalSummary,
   getForecast,
   type AnalyticsFilter,
 } from "@/lib/analytics";
@@ -74,8 +73,6 @@ export async function GET(req: NextRequest) {
         return NextResponse.json(await getHallHeatmap(filter));
       case "payments":
         return NextResponse.json(await getPaymentsSummary(filter));
-      case "fiscal":
-        return NextResponse.json(await getFiscalSummary(filter));
       case "forecast":
         return NextResponse.json(await getForecast(filter));
       default:

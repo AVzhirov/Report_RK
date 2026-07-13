@@ -1,7 +1,7 @@
 "use client";
 import { useAnalytics, formatRub, formatNum } from "@/lib/use-analytics";
 import { KpiCard, SectionCard, LoadingBlock, ErrorBlock, AbcBadge } from "@/components/analytics/common";
-import { Utensils, Coins, Target, TrendingDown } from "lucide-react";
+import { Utensils, Coins, Target, TrendingDown, Info } from "lucide-react";
 import {
   ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from "recharts";
@@ -30,15 +30,33 @@ export function MenuModule() {
 
   return (
     <div className="space-y-5">
+      {/* Объяснение ABC-анализа */}
+      <div className="p-4 rounded-xl flex items-start gap-3" style={{ background: "rgba(201, 162, 75, 0.1)", border: "1px solid #C9A24B" }}>
+        <Info className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: "#C9A24B" }} />
+        <div className="flex-1 text-sm">
+          <div className="font-semibold mb-1" style={{ color: "#8B6F2A" }}>Что такое ABC-анализ?</div>
+          <div className="text-muted-foreground">
+            Блюда сортируются по выручке и делятся на 3 группы:
+            <span className="inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded text-xs font-bold" style={{ background: "#2A5C3D", color: "white" }}>A</span>
+            — 80% выручки (звёзды меню, держат бизнес),
+            <span className="inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded text-xs font-bold" style={{ background: "#C9A24B", color: "#2A1A12" }}>B</span>
+            — следующие 15% (стабильные позиции),
+            <span className="inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded text-xs font-bold" style={{ background: "#7A5A45", color: "white" }}>C</span>
+            — последние 5% (кандидаты на удаление из меню).
+          </div>
+        </div>
+      </div>
+
+      {/* KPI */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard label="Позиций продано" value={formatNum(rows?.length || 0, 0)} icon={Utensils} hint={`Всего ${formatNum(totalQty, 0)} шт`} />
         <KpiCard label="Маржа" value={formatRub(totalMargin)} icon={Coins} hint={`${marginPct.toFixed(1)}% от выручки`} />
-        <KpiCard label="Категория A" value={formatNum(catA, 0)} icon={Target} hint="80% выручки" />
-        <KpiCard label="Мёртвые души (C)" value={formatNum(catC, 0)} icon={TrendingDown} hint="<5% выручки" />
+        <KpiCard label="Категория A (звёзды)" value={formatNum(catA, 0)} icon={Target} hint="80% выручки" />
+        <KpiCard label="Категория C (аутсайдеры)" value={formatNum(catC, 0)} icon={TrendingDown} hint="<5% выручки — подумать об удалении" />
       </div>
 
       {/* График по категориям */}
-      <SectionCard title="Структура выручки по категориям" subtitle="Доля категорий в обороте">
+      <SectionCard title="Структура выручки по категориям меню" subtitle="Какие категории приносят больше всего денег">
         {catsLoading || !cats ? <LoadingBlock /> : (
           <div className="grid lg:grid-cols-2 gap-5">
             <ResponsiveContainer width="100%" height={300}>
@@ -73,7 +91,23 @@ export function MenuModule() {
       </SectionCard>
 
       {/* ABC-матрица */}
-      <SectionCard title="ABC-анализ меню" subtitle="Сортировка по выручке · класс A (80%), B (95%), C (5%)">
+      <SectionCard
+        title="ABC-анализ блюд"
+        subtitle="Все блюда отсортированы по выручке — от самой прибыльной к наименее прибыльной"
+        action={
+          <div className="flex items-center gap-3 text-xs">
+            <div className="flex items-center gap-1">
+              <AbcBadge abc="A" /> <span className="text-muted-foreground">— звёзды (80%)</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <AbcBadge abc="B" /> <span className="text-muted-foreground">— стабильные (15%)</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <AbcBadge abc="C" /> <span className="text-muted-foreground">— аутсайдеры (5%)</span>
+            </div>
+          </div>
+        }
+      >
         {error ? <ErrorBlock message={error} /> : loading || !rows ? <LoadingBlock height="h-96" /> : (
           <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
             <table className="w-full text-sm">
@@ -84,7 +118,6 @@ export function MenuModule() {
                   <th className="py-2">Категория</th>
                   <th className="py-2 text-right">Кол-во</th>
                   <th className="py-2 text-right">Выручка</th>
-                  <th className="py-2 text-right">Себест.</th>
                   <th className="py-2 text-right">Маржа</th>
                   <th className="py-2 text-right">Маржа %</th>
                   <th className="py-2 text-right">Доля</th>
@@ -101,7 +134,6 @@ export function MenuModule() {
                     <td className="py-2 text-muted-foreground">{r.category}</td>
                     <td className="py-2 text-right tabular-nums">{formatNum(r.quantity, 0)}</td>
                     <td className="py-2 text-right tabular-nums font-medium" style={{ color: "var(--bordeaux)" }}>{formatRub(r.revenue)}</td>
-                    <td className="py-2 text-right tabular-nums text-muted-foreground">{formatRub(r.cost)}</td>
                     <td className="py-2 text-right tabular-nums">{formatRub(r.margin)}</td>
                     <td className="py-2 text-right tabular-nums">
                       <span className={r.marginPct >= 60 ? "rk-positive font-medium" : r.marginPct < 40 ? "rk-negative font-medium" : ""}>
@@ -118,7 +150,7 @@ export function MenuModule() {
       </SectionCard>
 
       {/* Маржинальность топ-20 */}
-      <SectionCard title="Маржинальность топ-20 блюд" subtitle="Сколько рублей маржи приносит каждая позиция">
+      <SectionCard title="Маржинальность топ-20 блюд" subtitle="Сколько рублей маржи приносит каждая позиция (зелёное — прибыль, коричневое — себестоимость)">
         {loading || !rows ? <LoadingBlock /> : (
           <ResponsiveContainer width="100%" height={400}>
             <BarChart data={rows.slice(0, 20)} layout="vertical">

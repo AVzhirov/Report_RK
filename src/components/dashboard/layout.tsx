@@ -7,14 +7,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   UtensilsCrossed, LayoutDashboard, TrendingUp, UtensilsCrossed as MenuIcon,
-  Percent, Users, LayoutGrid, CreditCard, Receipt, LineChart, LogOut,
+  Percent, Users, LayoutGrid, CreditCard, LineChart, LogOut,
   ChevronDown, Store, Settings as SettingsIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type ModuleId =
   | "overview" | "sales" | "menu" | "discounts" | "staff"
-  | "hall" | "payments" | "fiscal" | "forecast" | "settings";
+  | "hall" | "payments" | "forecast" | "settings";
 
 interface ModuleMeta {
   id: ModuleId;
@@ -32,8 +32,7 @@ export const MODULES: ModuleMeta[] = [
   { id: "discounts", label: "Скидки",        icon: Percent,         desc: "Программы лояльности, ROI" },
   { id: "staff",     label: "Сотрудники",    icon: Users,           desc: "Эффективность персонала" },
   { id: "hall",      label: "Зал и столы",   icon: LayoutGrid,      desc: "Загрузка, оборачиваемость" },
-  { id: "payments",  label: "Платежи",       icon: CreditCard,      desc: "Наличные/карта/QR, чаевые" },
-  { id: "fiscal",    label: "Налоги/Фискал", icon: Receipt,         desc: "НДС, аудит операций" },
+  { id: "payments",  label: "Платежи",       icon: CreditCard,      desc: "Наличные/карта/QR" },
   { id: "forecast",  label: "Прогноз",       icon: LineChart,       desc: "Прогноз выручки, аномалии" },
   { id: "settings",  label: "Настройки",     icon: SettingsIcon,    desc: "БД, демо-данные, MS SQL, сеть",
     roles: ["OWNER", "MANAGER"] },

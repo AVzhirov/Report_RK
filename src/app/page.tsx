@@ -10,7 +10,6 @@ import { DiscountsModule } from "@/components/modules/discounts";
 import { StaffModule } from "@/components/modules/staff";
 import { HallModule } from "@/components/modules/hall";
 import { PaymentsModule } from "@/components/modules/payments";
-import { FiscalModule } from "@/components/modules/fiscal";
 import { ForecastModule } from "@/components/modules/forecast";
 import { SettingsModule } from "@/components/modules/settings";
 
@@ -18,7 +17,6 @@ export default function Home() {
   const { user } = useAuth();
   const [activeModule, setActiveModule] = useState<ModuleId>("overview");
 
-  // Подгрузим Zustand persist сразу (он синхронный, но SSR-safe)
   useEffect(() => {
     // no-op — persist инициализируется сам
   }, []);
@@ -27,7 +25,6 @@ export default function Home() {
     return <LoginForm />;
   }
 
-  // Если у текущей роли нет доступа к выбранному модулю — показываем обзор
   const effectiveModule = canAccess(user.role, activeModule) ? activeModule : "overview";
 
   return (
@@ -39,7 +36,6 @@ export default function Home() {
       {effectiveModule === "staff"     && <StaffModule />}
       {effectiveModule === "hall"      && <HallModule />}
       {effectiveModule === "payments"  && <PaymentsModule />}
-      {effectiveModule === "fiscal"    && <FiscalModule />}
       {effectiveModule === "forecast"  && <ForecastModule />}
       {effectiveModule === "settings"  && <SettingsModule />}
     </DashboardLayout>
