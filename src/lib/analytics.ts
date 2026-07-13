@@ -527,8 +527,12 @@ function buildAbcRows<T extends { revenue: number }>(
 
 export async function getMenuAbc(filter: AnalyticsFilter): Promise<MenuAbcRow[]> {
   if (isMssqlEnabled()) {
-    // SESSIONDISHES — продажи, MENUITEMS — блюда, CATEGLIST — категории
-    // SIFR в SESSIONDISHES ссылается на MENUITEMS.SIFR
+    // По официальному запросу RK7:
+    // PAYBINDINGS → SALEOBJECTS (DISHUNI) → SESSIONDISHES (UNI) → MENUITEMS (SIFR)
+    // PAYBINDINGS.QUANTITY — количество
+    // PAYBINDINGS.PAYSUM — сумма с учётом скидок (чистая выручка)
+    // PAYBINDINGS.PRICESUM — сумма по прайс-листу (до скидок)
+    // Скидка = PRICESUM - PAYSUM
     const rows = await query<{
       dishId: number; name: string; code: string; category: string;
       price: number; costPrice: number; quantity: number;
@@ -542,19 +546,26 @@ export async function getMenuAbc(filter: AnalyticsFilter): Promise<MenuAbcRow[]>
         ''               AS cuisine,
         0                AS price,
         0                AS costPrice,
-        SUM(s.QUANTITY)  AS quantity,
-        SUM(s.PAYSUM)    AS revenue,
+        SUM(pb.QUANTITY) AS quantity,
+        SUM(pb.PAYSUM)   AS revenue,
         0                AS cost,
-        0                AS discount
-      FROM SESSIONDISHES s
-      JOIN MENUITEMS d ON d.SIFR = s.SIFR
+        SUM(pb.PRICESUM) - SUM(pb.PAYSUM) AS discount
+      FROM PAYBINDINGS pb
+      JOIN CURRLINES cl ON cl.VISIT = pb.VISIT AND cl.MIDSERVER = pb.MIDSERVER AND cl.UNI = pb.CURRUNI
+      JOIN PRINTCHECKS pc ON pc.VISIT = cl.VISIT AND pc.MIDSERVER = cl.MIDSERVER AND pc.UNI = cl.CHECKUNI
+      JOIN ORDERS o ON o.VISIT = pb.VISIT AND o.MIDSERVER = pb.MIDSERVER AND o.IDENTINVISIT = pb.ORDERIDENT
+      JOIN GLOBALSHIFTS gs ON gs.MIDSERVER = o.MIDSERVER AND gs.SHIFTNUM = o.ICOMMONSHIFT AND gs.STATUS = 3
+      JOIN SALEOBJECTS so ON so.VISIT = pb.VISIT AND so.MIDSERVER = pb.MIDSERVER AND so.DISHUNI = pb.DISHUNI
+      JOIN SESSIONDISHES sd ON sd.VISIT = so.VISIT AND sd.MIDSERVER = so.MIDSERVER AND sd.UNI = so.DISHUNI
+      JOIN MENUITEMS d ON d.SIFR = sd.SIFR
       LEFT JOIN CATEGLIST c ON c.SIFR = d.PARENT
-      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = s.MIDSERVER
-      WHERE s.CREATIONDATETIME >= @from AND s.CREATIONDATETIME <= @to
+      LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pb.MIDSERVER
+      WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
-        AND (s.DBSTATUS IS NULL OR s.DBSTATUS <> -1)
-        AND (s.STATE IS NULL OR s.STATE <> 7)
-        AND s.QUANTITY <> 0
+        AND pc.STATE = 6
+        AND pc.IGNOREINREP = 0
+        AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
+        AND (pc.DELETED IS NULL OR pc.DELETED = 0)
       GROUP BY d.SIFR, d.NAME, d.CODE, c.NAME
       ORDER BY revenue DESC
     `, {
