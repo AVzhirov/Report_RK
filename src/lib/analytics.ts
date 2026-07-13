@@ -579,12 +579,12 @@ export async function getDiscountsSummary(filter: AnalyticsFilter) {
         ''    AS kind,
         0     AS value,
         COUNT(*)    AS count,
-        SUM(dd.AMOUNT) AS sum,
-        0     AS cards
-      FROM DISCOUNTDETAILS dd
-      JOIN DISCOUNTS d ON d.SIFR = dd.DISCOUNT
+        SUM(dd.CALCAMOUNT) AS sum,
+        SUM(CASE WHEN dd.CARDCODE IS NOT NULL AND dd.CARDCODE <> '' THEN 1 ELSE 0 END) AS cards
+      FROM DISHDISCOUNTS dd
+      JOIN DISCOUNTS d ON d.SIFR = dd.SIFR
       JOIN PRINTCHECKS pc ON pc.VISIT = dd.VISIT AND pc.MIDSERVER = dd.MIDSERVER
-        AND pc.ORDERIDENT = dd.ORDERIDENT AND pc.UNI = dd.CHECKUNI
+        AND pc.ORDERIDENT = dd.ORDERIDENT
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
