@@ -124,18 +124,26 @@ export async function getOverviewKpi(filter: AnalyticsFilter) {
       to: filter.to,
       restaurantId: filter.restaurantId || null,
     };
-    // PRINTCHECKS: CLOSEDATETIME, BASICSUM, DISCOUNTSUM, GUESTCNT, RESTAURANT
+    // Официальная логика R-Keeper 7:
+    // Выручка = SUM(PAYMENTS.BASICSUM) с фильтрами STATE=6 (закрыт), IGNOREINREP=0
+    // Гости = только оригинальные чеки (PARENTCHECKNUM = CHECKNUM или PARENTCHECKNUM = 0)
+    // Скидки = PRINTCHECKS.DISCOUNTSUM (сумма скидок по чеку)
     const sqlText = `
       SELECT
-        COALESCE(SUM(pc.BASICSUM), 0)              AS totalRevenue,
-        COALESCE(SUM(pc.DISCOUNTSUM), 0)           AS totalDiscount,
-        COUNT(*)                                     AS totalChecks,
-        COALESCE(SUM(pc.GUESTCNT), 0)              AS totalGuests,
-        0                                            AS totalTips,
-        COALESCE(AVG(DATEDIFF(MINUTE, v.STARTTIME, v.QUITTIME)), 0) AS avgDuration,
-        COUNT(DISTINCT CONVERT(date, pc.CLOSEDATETIME)) AS daysCount
+        COALESCE(SUM(p.BASICSUM), 0)                                                    AS totalRevenue,
+        COALESCE(SUM(pc.DISCOUNTSUM), 0)                                                AS totalDiscount,
+        COUNT(DISTINCT pc.VISIT + pc.MIDSERVER * 1000000 + pc.ORDERIDENT * 10000 + pc.UNI) AS totalChecks,
+        COALESCE(SUM(CASE WHEN pc.PARENTCHECKNUM = 0 OR pc.PARENTCHECKNUM IS NULL
+                          THEN pc.GUESTCNT ELSE 0 END), 0)                              AS totalGuests,
+        0                                                                                 AS totalTips,
+        COALESCE(AVG(DATEDIFF(MINUTE, v.STARTTIME, v.QUITTIME)), 0)                      AS avgDuration,
+        COUNT(DISTINCT CONVERT(date, pc.CLOSEDATETIME))                                  AS daysCount
       FROM PRINTCHECKS pc
-      LEFT JOIN VISITS v  ON v.SIFR = pc.VISIT AND v.MIDSERVER = pc.MIDSERVER
+      LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
+        AND p.ORDERIDENT = pc.ORDERIDENT AND p.PRINTCHECKUNI = pc.UNI
+        AND p.STATE = 6 AND p.IGNOREINREP = 0
+        AND (p.SHOWINREP IS NULL OR p.SHOWINREP BETWEEN 0 AND 2)
+      LEFT JOIN VISITS v ON v.SIFR = pc.VISIT AND v.MIDSERVER = pc.MIDSERVER
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
@@ -220,13 +228,18 @@ export async function getOverviewKpi(filter: AnalyticsFilter) {
 
 export async function getSalesDaily(filter: AnalyticsFilter) {
   if (isMssqlEnabled()) {
+    // Выручка через PAYMENTS.BASICSUM (как в официальном отчёте RK7)
     const rows = await query<{ date: string; revenue: number; checks: number; discount: number }>(`
       SELECT
         CONVERT(date, pc.CLOSEDATETIME)         AS date,
-        SUM(pc.BASICSUM)                        AS revenue,
-        COUNT(*)                                AS checks,
+        SUM(p.BASICSUM)                        AS revenue,
+        COUNT(DISTINCT pc.VISIT + pc.MIDSERVER * 1000000 + pc.ORDERIDENT * 10000 + pc.UNI) AS checks,
         COALESCE(SUM(pc.DISCOUNTSUM), 0)        AS discount
       FROM PRINTCHECKS pc
+      LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
+        AND p.ORDERIDENT = pc.ORDERIDENT AND p.PRINTCHECKUNI = pc.UNI
+        AND p.STATE = 6 AND p.IGNOREINREP = 0
+        AND (p.SHOWINREP IS NULL OR p.SHOWINREP BETWEEN 0 AND 2)
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
@@ -282,17 +295,25 @@ export async function getSalesByRestaurant(filter: AnalyticsFilter) {
         r.SIFR AS sifr,
         r.NAME AS name,
         CAST(r.CODE AS NVARCHAR(50)) AS code,
-        COALESCE(SUM(x.BASICSUM), 0)         AS revenue,
-        COUNT(x.BASICSUM)                     AS checks,
-        COALESCE(SUM(x.DISCOUNTSUM), 0)       AS discount
+        COALESCE(SUM(x.paySum), 0)         AS revenue,
+        COALESCE(SUM(x.chkCount), 0)        AS checks,
+        COALESCE(SUM(x.discSum), 0)         AS discount
       FROM RESTAURANTS r
       LEFT JOIN (
-        SELECT cgr.RESTAURANT AS restId, pc.BASICSUM, pc.DISCOUNTSUM
+        SELECT cgr.RESTAURANT AS restId,
+               SUM(p.BASICSUM) AS paySum,
+               COUNT(DISTINCT pc.VISIT + pc.MIDSERVER * 1000000 + pc.ORDERIDENT * 10000 + pc.UNI) AS chkCount,
+               SUM(pc.DISCOUNTSUM) AS discSum
         FROM PRINTCHECKS pc
         JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
+        LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
+          AND p.ORDERIDENT = pc.ORDERIDENT AND p.PRINTCHECKUNI = pc.UNI
+          AND p.STATE = 6 AND p.IGNOREINREP = 0
+          AND (p.SHOWINREP IS NULL OR p.SHOWINREP BETWEEN 0 AND 2)
         WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
           AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
-        AND (pc.DELETED IS NULL OR pc.DELETED = 0)
+          AND (pc.DELETED IS NULL OR pc.DELETED = 0)
+        GROUP BY cgr.RESTAURANT
       ) x ON x.restId = r.SIFR
       GROUP BY r.SIFR, r.NAME, r.CODE
       ORDER BY r.SIFR
@@ -344,8 +365,12 @@ export async function getSalesHourly(filter: AnalyticsFilter) {
       SELECT
         DATEPART(WEEKDAY, pc.CLOSEDATETIME) - 1 AS dow,
         DATEPART(HOUR, pc.CLOSEDATETIME)        AS hour,
-        SUM(pc.BASICSUM)                        AS revenue
+        SUM(p.BASICSUM)                         AS revenue
       FROM PRINTCHECKS pc
+      LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
+        AND p.ORDERIDENT = pc.ORDERIDENT AND p.PRINTCHECKUNI = pc.UNI
+        AND p.STATE = 6 AND p.IGNOREINREP = 0
+        AND (p.SHOWINREP IS NULL OR p.SHOWINREP BETWEEN 0 AND 2)
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
@@ -1024,7 +1049,8 @@ export async function getPaymentsSummary(filter: AnalyticsFilter) {
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = p.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
-        AND (p.DBSTATUS IS NULL OR p.DBSTATUS <> -1)
+        AND p.STATE = 6 AND p.IGNOREINREP = 0
+        AND (p.SHOWINREP IS NULL OR p.SHOWINREP BETWEEN 0 AND 2)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
       GROUP BY p.PAYLINETYPE
