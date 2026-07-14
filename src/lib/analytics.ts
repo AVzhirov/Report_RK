@@ -149,7 +149,7 @@ export async function getOverviewKpi(filter: AnalyticsFilter) {
         COALESCE(SUM(pay.BASICSUM), 0)                                                  AS totalRevenue,
         COALESCE(SUM(pc.PRLISTSUM), 0)                                                  AS pricelistSum,
         COALESCE(SUM(pc.DISCOUNTSUM), 0)                                                AS totalDiscount,
-        COUNT(DISTINCT CONCAT(pc.VISIT, '_', pc.MIDSERVER, '_', pc.ORDERIDENT, '_', pc.UNI)) AS totalChecks,
+        COUNT(DISTINCT pc.GLOBALIDENT) AS totalChecks,
         COALESCE(SUM(CASE WHEN pc.PARENTCHECKNUM = 0 OR pc.PARENTCHECKNUM IS NULL
                           THEN pc.GUESTCNT ELSE 0 END), 0)                              AS totalGuests,
         0                                                                                 AS totalTips,
@@ -167,6 +167,7 @@ export async function getOverviewKpi(filter: AnalyticsFilter) {
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND pc.STATE = 6
+        AND (pc.ISBILL IS NULL OR pc.ISBILL = 0)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
     `;
@@ -258,7 +259,7 @@ export async function getSalesDaily(filter: AnalyticsFilter) {
         CONVERT(date, pc.CLOSEDATETIME)         AS date,
         SUM(pay.BASICSUM)                      AS revenue,
         SUM(pc.PRLISTSUM)                      AS pricelistSum,
-        COUNT(DISTINCT CONCAT(pc.VISIT, '_', pc.MIDSERVER, '_', pc.ORDERIDENT, '_', pc.UNI)) AS checks,
+        COUNT(DISTINCT pc.GLOBALIDENT) AS checks,
         COALESCE(SUM(pc.DISCOUNTSUM), 0)        AS discount
       FROM PRINTCHECKS pc
       LEFT JOIN (
@@ -271,6 +272,7 @@ export async function getSalesDaily(filter: AnalyticsFilter) {
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND pc.STATE = 6
+        AND (pc.ISBILL IS NULL OR pc.ISBILL = 0)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
       GROUP BY CONVERT(date, pc.CLOSEDATETIME)
@@ -330,15 +332,20 @@ export async function getSalesByRestaurant(filter: AnalyticsFilter) {
       FROM RESTAURANTS r
       LEFT JOIN (
         SELECT cgr.RESTAURANT AS restId,
-               SUM(p.BASICSUM) AS paySum,
-               COUNT(DISTINCT CONCAT(pc.VISIT, '_', pc.MIDSERVER, '_', pc.ORDERIDENT, '_', pc.UNI)) AS chkCount,
+               SUM(pay.BASICSUM) AS paySum,
+               COUNT(DISTINCT pc.GLOBALIDENT) AS chkCount,
                SUM(pc.DISCOUNTSUM) AS discSum
         FROM PRINTCHECKS pc
         JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
-        LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
-          AND p.ORDERIDENT = pc.ORDERIDENT AND p.PRINTCHECKUNI = pc.UNI
-          AND p.STATE in (4,5,6) AND p.IGNOREINREP = 0
-          AND p.SHOWINREP <> 3
+        LEFT JOIN (
+          SELECT VISIT, MIDSERVER, ORDERIDENT,
+            CASE ISPREPAY WHEN 0 THEN PRINTCHECKUNI ELSE PREPAYCHECKUNI END AS CHKUNI,
+            SUM(BASICSUM) AS BASICSUM
+          FROM PAYMENTS
+          WHERE STATE in (4,5,6) AND IGNOREINREP = 0 AND SHOWINREP <> 3
+          GROUP BY VISIT, MIDSERVER, ORDERIDENT, CASE ISPREPAY WHEN 0 THEN PRINTCHECKUNI ELSE PREPAYCHECKUNI END
+        ) pay ON pay.VISIT = pc.VISIT AND pay.MIDSERVER = pc.MIDSERVER
+          AND pay.ORDERIDENT = pc.ORDERIDENT AND pay.CHKUNI = pc.UNI
         WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
           AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
           AND (pc.DELETED IS NULL OR pc.DELETED = 0)
@@ -394,18 +401,24 @@ export async function getSalesHourly(filter: AnalyticsFilter) {
       SELECT
         DATEPART(WEEKDAY, pc.CLOSEDATETIME) - 1 AS dow,
         DATEPART(HOUR, pc.CLOSEDATETIME)        AS hour,
-        SUM(p.BASICSUM)                         AS revenue
+        SUM(pay.BASICSUM)                         AS revenue
       FROM PRINTCHECKS pc
-      LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
-        AND p.ORDERIDENT = pc.ORDERIDENT AND p.PRINTCHECKUNI = pc.UNI
-        AND p.STATE in (4,5,6) AND p.IGNOREINREP = 0
-        AND p.SHOWINREP <> 3
+      LEFT JOIN (
+        SELECT VISIT, MIDSERVER, ORDERIDENT,
+          CASE ISPREPAY WHEN 0 THEN PRINTCHECKUNI ELSE PREPAYCHECKUNI END AS CHKUNI,
+          SUM(BASICSUM) AS BASICSUM
+        FROM PAYMENTS
+        WHERE STATE in (4,5,6) AND IGNOREINREP = 0 AND SHOWINREP <> 3
+        GROUP BY VISIT, MIDSERVER, ORDERIDENT, CASE ISPREPAY WHEN 0 THEN PRINTCHECKUNI ELSE PREPAYCHECKUNI END
+      ) pay ON pay.VISIT = pc.VISIT AND pay.MIDSERVER = pc.MIDSERVER
+        AND pay.ORDERIDENT = pc.ORDERIDENT AND pay.CHKUNI = pc.UNI
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
         AND pc.STATE = 6
+        AND (pc.ISBILL IS NULL OR pc.ISBILL = 0)
       GROUP BY DATEPART(WEEKDAY, pc.CLOSEDATETIME) - 1, DATEPART(HOUR, pc.CLOSEDATETIME)
     `, {
       from: filter.from,
@@ -462,24 +475,30 @@ export async function getSalesByOrderCategory(filter: AnalyticsFilter) {
     }>(`
       SELECT
         COALESCE(uot.NAME, 'Без категории')  AS category,
-        SUM(p.BASICSUM)                       AS revenue,
-        COUNT(DISTINCT CONCAT(pc.VISIT, '_', pc.MIDSERVER, '_', pc.ORDERIDENT, '_', pc.UNI)) AS checks,
+        SUM(pay.BASICSUM)                       AS revenue,
+        COUNT(DISTINCT pc.GLOBALIDENT) AS checks,
         COALESCE(SUM(CASE WHEN pc.PARENTCHECKNUM = 0 OR pc.PARENTCHECKNUM IS NULL
                           THEN pc.GUESTCNT ELSE 0 END), 0) AS guests,
         COALESCE(SUM(pc.DISCOUNTSUM), 0)     AS discount
       FROM PRINTCHECKS pc
       JOIN ORDERS o ON o.VISIT = pc.VISIT AND o.MIDSERVER = pc.MIDSERVER AND o.IDENTINVISIT = pc.ORDERIDENT
       LEFT JOIN UNCHANGEABLEORDERTYPES uot ON uot.SIFR = o.UOT
-      LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
-        AND p.ORDERIDENT = pc.ORDERIDENT AND p.PRINTCHECKUNI = pc.UNI
-        AND p.STATE in (4,5,6) AND p.IGNOREINREP = 0
-        AND p.SHOWINREP <> 3
+      LEFT JOIN (
+        SELECT VISIT, MIDSERVER, ORDERIDENT,
+          CASE ISPREPAY WHEN 0 THEN PRINTCHECKUNI ELSE PREPAYCHECKUNI END AS CHKUNI,
+          SUM(BASICSUM) AS BASICSUM
+        FROM PAYMENTS
+        WHERE STATE in (4,5,6) AND IGNOREINREP = 0 AND SHOWINREP <> 3
+        GROUP BY VISIT, MIDSERVER, ORDERIDENT, CASE ISPREPAY WHEN 0 THEN PRINTCHECKUNI ELSE PREPAYCHECKUNI END
+      ) pay ON pay.VISIT = pc.VISIT AND pay.MIDSERVER = pc.MIDSERVER
+        AND pay.ORDERIDENT = pc.ORDERIDENT AND pay.CHKUNI = pc.UNI
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
         AND pc.STATE = 6
+        AND (pc.ISBILL IS NULL OR pc.ISBILL = 0)
       GROUP BY uot.NAME
       ORDER BY revenue DESC
     `, {
@@ -599,6 +618,7 @@ export async function getMenuAbc(filter: AnalyticsFilter): Promise<MenuAbcRow[]>
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND pc.STATE = 6
+        AND (pc.ISBILL IS NULL OR pc.ISBILL = 0)
         AND pc.IGNOREINREP = 0
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
@@ -736,6 +756,7 @@ export async function getDiscountsSummary(filter: AnalyticsFilter) {
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
         AND pc.STATE = 6
+        AND (pc.ISBILL IS NULL OR pc.ISBILL = 0)
       GROUP BY d.SIFR, d.NAME, d.CODE
       ORDER BY sum DESC
     `, {
@@ -835,17 +856,22 @@ export async function getStaffPerformance(filter: AnalyticsFilter) {
         e.NAME          AS name,
         ''              AS position,
         0               AS restaurantId,
-        COALESCE(SUM(p.BASICSUM), 0)          AS revenue,
+        COALESCE(SUM(pay.BASICSUM), 0)          AS revenue,
         COUNT(DISTINCT o.IDENTINVISIT)         AS orders,
         COALESCE(SUM(v.GUESTCNT), 0)          AS guests,
         COALESCE(SUM(pc.DISCOUNTSUM), 0)       AS discount
       FROM ORDERS o
       JOIN EMPLOYEES e ON e.SIFR = o.MAINWAITER
       LEFT JOIN PRINTCHECKS pc ON pc.VISIT = o.VISIT AND pc.MIDSERVER = o.MIDSERVER AND pc.ORDERIDENT = o.IDENTINVISIT
-      LEFT JOIN PAYMENTS p ON p.VISIT = pc.VISIT AND p.MIDSERVER = pc.MIDSERVER
-        AND p.ORDERIDENT = pc.ORDERIDENT AND p.PRINTCHECKUNI = pc.UNI
-        AND p.STATE in (4,5,6) AND p.IGNOREINREP = 0
-        AND p.SHOWINREP <> 3
+      LEFT JOIN (
+        SELECT VISIT, MIDSERVER, ORDERIDENT,
+          CASE ISPREPAY WHEN 0 THEN PRINTCHECKUNI ELSE PREPAYCHECKUNI END AS CHKUNI,
+          SUM(BASICSUM) AS BASICSUM
+        FROM PAYMENTS
+        WHERE STATE in (4,5,6) AND IGNOREINREP = 0 AND SHOWINREP <> 3
+        GROUP BY VISIT, MIDSERVER, ORDERIDENT, CASE ISPREPAY WHEN 0 THEN PRINTCHECKUNI ELSE PREPAYCHECKUNI END
+      ) pay ON pay.VISIT = pc.VISIT AND pay.MIDSERVER = pc.MIDSERVER
+        AND pay.ORDERIDENT = pc.ORDERIDENT AND pay.CHKUNI = pc.UNI
       LEFT JOIN VISITS v ON v.SIFR = o.VISIT AND v.MIDSERVER = o.MIDSERVER
       LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = o.MIDSERVER
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
@@ -855,6 +881,7 @@ export async function getStaffPerformance(filter: AnalyticsFilter) {
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
         AND pc.STATE = 6
+        AND (pc.ISBILL IS NULL OR pc.ISBILL = 0)
       GROUP BY e.SIFR, e.NAME
       ORDER BY revenue DESC
     `, {
@@ -1158,7 +1185,7 @@ export async function getPaymentsSummary(filter: AnalyticsFilter) {
           WHEN 7 THEN 'Тара'
           ELSE 'Тип ' + CAST(p.PAYLINETYPE AS NVARCHAR(10))
         END AS typeName,
-        SUM(p.BASICSUM)    AS amount,
+        SUM(pay.BASICSUM)    AS amount,
         0                  AS tips,
         COUNT(*)           AS count
       FROM PAYMENTS p
@@ -1173,6 +1200,7 @@ export async function getPaymentsSummary(filter: AnalyticsFilter) {
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
         AND pc.STATE = 6
+        AND (pc.ISBILL IS NULL OR pc.ISBILL = 0)
       GROUP BY p.PAYLINETYPE
       ORDER BY amount DESC
     `, {
@@ -1249,7 +1277,7 @@ export async function getPaymentsByCurrency(filter: AnalyticsFilter) {
       SELECT
         COALESCE(cur.NAME, 'Базовая')  AS currency,
         COALESCE(CAST(cur.CODE AS NVARCHAR(10)), '') AS currencyCode,
-        SUM(p.BASICSUM)                AS baseAmount,
+        SUM(pay.BASICSUM)                AS baseAmount,
         SUM(p.CURRLINESUM)              AS currAmount,
         COUNT(*)                        AS count
       FROM PAYMENTS p
@@ -1268,6 +1296,7 @@ export async function getPaymentsByCurrency(filter: AnalyticsFilter) {
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
         AND pc.STATE = 6
+        AND (pc.ISBILL IS NULL OR pc.ISBILL = 0)
       GROUP BY cur.NAME, cur.CODE
       ORDER BY baseAmount DESC
     `, {
@@ -1314,7 +1343,7 @@ export async function getShiftBalance(filter: AnalyticsFilter) {
         COALESCE(r.NAME, '')                                AS restaurantName,
         COALESCE(cur.NAME, 'Базовая')                       AS currency,
         COALESCE(CAST(cur.CODE AS NVARCHAR(10)), '')         AS currencyCode,
-        COALESCE(SUM(p.BASICSUM), 0)                        AS revenue,
+        COALESCE(SUM(pay.BASICSUM), 0)                        AS revenue,
         COUNT(DISTINCT pc.GLOBALIDENT)                      AS checkCount,
         COALESCE(SUM(CASE WHEN pc.PARENTCHECKNUM = 0 OR pc.PARENTCHECKNUM IS NULL
                            THEN pc.GUESTCNT ELSE 0 END), 0) AS guestCount,
