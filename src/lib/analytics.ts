@@ -569,7 +569,9 @@ export async function getMenuAbc(filter: AnalyticsFilter): Promise<MenuAbcRow[]>
         AND pc.IGNOREINREP = 0
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
-        AND (pc.STATE IS NULL OR pc.STATE = 6)
+        AND (sd.DBSTATUS IS NULL OR sd.DBSTATUS <> -1)
+        AND (sd.STATE IS NULL OR sd.STATE <> 7)
+        AND sd.QUANTITY <> 0
       GROUP BY d.SIFR, d.NAME, d.CODE, c.NAME
       ORDER BY revenue DESC
     `, {
@@ -1343,12 +1345,14 @@ export async function getVoidsSummary(filter: AnalyticsFilter) {
          WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
            AND (@restaurantId IS NULL OR EXISTS(SELECT 1 FROM CASHGROUPS cg WHERE cg.SIFR = pc.MIDSERVER AND cg.RESTAURANT = @restaurantId))
            AND (dv.DBSTATUS IS NULL OR dv.DBSTATUS <> -1)
+           AND (dv.ISUNPRINTEDDISH IS NULL OR dv.ISUNPRINTEDDISH = 0)
         ) AS totalVoids,
         (SELECT COALESCE(SUM(dv.PRLISTSUM), 0) FROM DISHVOIDS dv
          JOIN PRINTCHECKS pc ON pc.VISIT = dv.VISIT AND pc.MIDSERVER = dv.MIDSERVER AND pc.ORDERIDENT = dv.ORDERIDENT
          WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
            AND (@restaurantId IS NULL OR EXISTS(SELECT 1 FROM CASHGROUPS cg WHERE cg.SIFR = pc.MIDSERVER AND cg.RESTAURANT = @restaurantId))
            AND (dv.DBSTATUS IS NULL OR dv.DBSTATUS <> -1)
+           AND (dv.ISUNPRINTEDDISH IS NULL OR dv.ISUNPRINTEDDISH = 0)
         ) AS voidedSum,
         (SELECT COUNT(*) FROM PRINTCHECKS pc
          LEFT JOIN CASHGROUPS cgr ON cgr.SIFR = pc.MIDSERVER
@@ -1377,6 +1381,7 @@ export async function getVoidsSummary(filter: AnalyticsFilter) {
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (dv.DBSTATUS IS NULL OR dv.DBSTATUS <> -1)
+        AND (dv.ISUNPRINTEDDISH IS NULL OR dv.ISUNPRINTEDDISH = 0)
       GROUP BY ov.NAME
       ORDER BY count DESC
     `, {
@@ -1398,6 +1403,7 @@ export async function getVoidsSummary(filter: AnalyticsFilter) {
       WHERE pc.CLOSEDATETIME >= @from AND pc.CLOSEDATETIME <= @to
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (dv.DBSTATUS IS NULL OR dv.DBSTATUS <> -1)
+        AND (dv.ISUNPRINTEDDISH IS NULL OR dv.ISUNPRINTEDDISH = 0)
       GROUP BY e.NAME
       ORDER BY count DESC
     `, {
