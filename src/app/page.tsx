@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useAuth, canAccess } from "@/lib/auth-store";
 import { LoginForm } from "@/components/auth/login-form";
 import { DashboardLayout, type ModuleId } from "@/components/dashboard/layout";
@@ -16,12 +16,22 @@ import { ForecastModule } from "@/components/modules/forecast";
 import { SettingsModule } from "@/components/modules/settings";
 
 export default function Home() {
-  const { user } = useAuth();
+  const { user, _hasHydrated } = useAuth();
   const [activeModule, setActiveModule] = useState<ModuleId>("overview");
 
-  useEffect(() => {
-    // no-op — persist инициализируется сам
-  }, []);
+  // Ждём пока zustand persist загрузит данные из localStorage
+  // Без этого SSR рендерит user=null, потом client загружает user → mismatch
+  if (!_hasHydrated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "var(--cream)" }}>
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <div className="w-5 h-5 border-2 rounded-full animate-spin"
+            style={{ borderColor: "var(--bordeaux)", borderTopColor: "transparent" }} />
+          <span className="text-sm">Загрузка…</span>
+        </div>
+      </div>
+    );
+  }
 
   if (!user) {
     return <LoginForm />;

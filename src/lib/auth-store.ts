@@ -14,12 +14,13 @@ export interface AuthUser {
 
 interface AuthState {
   user: AuthUser | null;
+  _hasHydrated: boolean;
   login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
-  // Простая "заглушка" авторизации (демо). В реальном проекте — JWT + NextAuth.
+  setHasHydrated: (v: boolean) => void;
 }
 
-// Демо-аккаунты (в проде — bcrypt + БД)
+// Демо-аккаунты
 const DEMO_USERS: Array<AuthUser & { password: string }> = [
   { id: "1", email: "owner@rk7.ru",   password: "owner123",   name: "Александр Владимиров", role: "OWNER",   restaurantId: null },
   { id: "2", email: "manager@rk7.ru", password: "manager123", name: "Екатерина Соколова",   role: "MANAGER", restaurantId: null },
@@ -31,6 +32,7 @@ export const useAuth = create<AuthState>()(
   persist(
     (set) => ({
       user: null,
+      _hasHydrated: false,
       login: async (email, password) => {
         await new Promise((r) => setTimeout(r, 300));
         const u = DEMO_USERS.find((x) => x.email === email && x.password === password);
@@ -40,8 +42,14 @@ export const useAuth = create<AuthState>()(
         return { ok: true };
       },
       logout: () => set({ user: null }),
+      setHasHydrated: (v) => set({ _hasHydrated: v }),
     }),
-    { name: "rk7-auth" }
+    {
+      name: "rk7-auth",
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
+    }
   )
 );
 

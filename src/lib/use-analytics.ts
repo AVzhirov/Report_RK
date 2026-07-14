@@ -14,18 +14,28 @@ export function useAnalytics<T = unknown>(module: string, enabled = true) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Подписываемся только на toParams — одного вызова достаточно
-  const paramsKey = useFilter((s) => s.toParams());
+  // Подписываемся на отдельные поля — zustand сравнит через Object.is
+  const restaurantId = useFilter((s) => s.restaurantId);
+  const preset = useFilter((s) => s.preset);
+  const customFrom = useFilter((s) => s.customFrom);
+  const customTo = useFilter((s) => s.customTo);
+
+  // Формируем ключ параметров — ТОЛЬКО из примитивов, без new Date()
+  const paramsKey = `${restaurantId ?? "all"}|${preset}|${customFrom ?? ""}|${customTo ?? ""}`;
+
+  // Получаем toParams отдельно — для fetch
+  const toParams = useFilter((s) => s.toParams);
 
   const abortRef = useRef<AbortController | null>(null);
   const lastParamsRef = useRef<string>("");
+  const mountedRef = useRef(false);
 
-  const fetchIt = useCallback(async () => {
+  const fetchIt = useCallback(async (currentParams: string) => {
     if (!enabled) return;
 
-    // Защита от дублей: не запускаем новый запрос если параметры не изменились
-    if (lastParamsRef.current === paramsKey && data !== null) return;
-    lastParamsRef.current = paramsKey;
+    // Защита от дублей
+    if (lastParamsRef.current === currentParams) return;
+    lastParamsRef.current = currentParams;
 
     // Отменяем предыдущий запрос
     if (abortRef.current) abortRef.current.abort();
@@ -35,7 +45,7 @@ export function useAnalytics<T = unknown>(module: string, enabled = true) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/analytics?module=${module}&${paramsKey}`, {
+      const res = await fetch(`/api/analytics?module=${module}&${toParams()}`, {
         cache: "no-store",
         signal: ac.signal,
       });
@@ -59,16 +69,18 @@ export function useAnalytics<T = unknown>(module: string, enabled = true) {
         setLoading(false);
       }
     }
-  }, [module, paramsKey, enabled, data]);
+  }, [module, enabled, toParams]);
 
   useEffect(() => {
-    fetchIt();
+    mountedRef.current = true;
+    fetchIt(paramsKey);
     return () => {
+      mountedRef.current = false;
       if (abortRef.current) abortRef.current.abort();
     };
-  }, [fetchIt]);
+  }, [paramsKey])
 
-  return { data, loading, error, refetch: fetchIt };
+  return { data, loading, error, refetch: () => fetchIt(paramsKey) };
 }
 
 export function formatRub(v: number, withSymbol = true): string {

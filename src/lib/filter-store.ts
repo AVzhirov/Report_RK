@@ -9,12 +9,11 @@ interface FilterState {
   preset: DatePreset;
   customFrom: string | null;
   customTo: string | null;
+  _hasHydrated: boolean;
   setRestaurant: (id: number | null) => void;
   setPreset: (p: DatePreset) => void;
   setCustomRange: (from: string, to: string) => void;
   getRange: () => { from: Date; to: Date };
-  /** Возвращает диапазон ПРЕДЫДУЩЕГО периода (для сравнения) */
-  getPrevRange: () => { from: Date; to: Date };
   toParams: () => string;
 }
 
@@ -54,7 +53,6 @@ function getRangeForPreset(preset: DatePreset, customFrom?: string | null, custo
         const to = new Date(customTo + "T23:59:59");
         return { from, to };
       }
-      // fallback
       const to = new Date(today);
       to.setHours(23, 59, 59, 0);
       const from = new Date(to.getTime() - 30 * 86400000);
@@ -82,19 +80,13 @@ export const useFilter = create<FilterState>()(
       preset: "30d",
       customFrom: null,
       customTo: null,
+      _hasHydrated: false,
       setRestaurant: (id) => set({ restaurantId: id }),
       setPreset: (p) => set({ preset: p }),
       setCustomRange: (from, to) => set({ preset: "custom", customFrom: from, customTo: to }),
       getRange: () => {
         const s = get();
         return getRangeForPreset(s.preset, s.customFrom, s.customTo);
-      },
-      getPrevRange: () => {
-        const r = get().getRange();
-        const diff = r.to.getTime() - r.from.getTime();
-        const prevTo = new Date(r.from.getTime() - 1);
-        const prevFrom = new Date(prevTo.getTime() - diff);
-        return { from: prevFrom, to: prevTo };
       },
       toParams: () => {
         const r = get().getRange();
@@ -105,6 +97,9 @@ export const useFilter = create<FilterState>()(
     {
       name: "rk7-filter",
       partialize: (s) => ({ restaurantId: s.restaurantId, preset: s.preset, customFrom: s.customFrom, customTo: s.customTo }),
+      onRehydrateStorage: () => (state) => {
+        if (state) state._hasHydrated = true;
+      },
     }
   )
 );
