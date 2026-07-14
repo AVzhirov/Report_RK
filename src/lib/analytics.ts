@@ -1259,7 +1259,7 @@ export async function getShiftBalance(filter: AnalyticsFilter) {
     // Себестоимость = через PRICES (PRICETYPE=4, SPECIES=1)
     const rows = await query<{
       shiftDate: string; shiftNum: number; restaurantName: string;
-      currencyType: string; revenue: number; checkCount: number; guestCount: number;
+      currency: string; currencyCode: string; revenue: number; checkCount: number; guestCount: number;
       taxSum: number; voidSum: number; voidChecks: number;
       pricelistSum: number; costSum: number;
     }>(`
@@ -1267,7 +1267,8 @@ export async function getShiftBalance(filter: AnalyticsFilter) {
         gs.SHIFTDATE                                        AS shiftDate,
         gs.SHIFTNUM                                         AS shiftNum,
         COALESCE(r.NAME, '')                                AS restaurantName,
-        COALESCE(ct.NAME, 'Базовая')                        AS currencyType,
+        COALESCE(cur.NAME, 'Базовая')                       AS currency,
+        COALESCE(CAST(cur.CODE AS NVARCHAR(10)), '')         AS currencyCode,
         COALESCE(SUM(p.BASICSUM), 0)                        AS revenue,
         COUNT(DISTINCT pc.GLOBALIDENT)                      AS checkCount,
         COALESCE(SUM(CASE WHEN pc.PARENTCHECKNUM = 0 OR pc.PARENTCHECKNUM IS NULL
@@ -1284,13 +1285,13 @@ export async function getShiftBalance(filter: AnalyticsFilter) {
       LEFT JOIN CURRLINES cl ON cl.VISIT = p.VISIT AND cl.MIDSERVER = p.MIDSERVER AND cl.UNI = p.CURRLINEUNI
       LEFT JOIN PRINTCHECKS pc ON pc.VISIT = cl.VISIT AND pc.MIDSERVER = cl.MIDSERVER AND pc.UNI = cl.CHECKUNI
         AND pc.IGNOREINREP = 0
-      LEFT JOIN CURRENCYTYPES ct ON ct.SIFR = p.IHIGHLEVELTYPE
+      LEFT JOIN CURRENCIES cur ON cur.SIFR = p.SIFR
       LEFT JOIN CASHGROUPS cg ON cg.SIFR = gs.MIDSERVER
       LEFT JOIN RESTAURANTS r ON r.SIFR = cg.RESTAURANT
       WHERE gs.STATUS = 3
         AND gs.SHIFTDATE >= @from AND gs.SHIFTDATE <= @to
         AND (@restaurantId IS NULL OR cg.RESTAURANT = @restaurantId)
-      GROUP BY gs.SHIFTDATE, gs.SHIFTNUM, r.NAME, ct.NAME
+      GROUP BY gs.SHIFTDATE, gs.SHIFTNUM, r.NAME, cur.NAME, cur.CODE
       ORDER BY gs.SHIFTDATE DESC, gs.SHIFTNUM DESC
     `, {
       from: filter.from,
@@ -1302,7 +1303,8 @@ export async function getShiftBalance(filter: AnalyticsFilter) {
       shiftDate: r.shiftDate instanceof Date ? r.shiftDate.toISOString().slice(0, 10) : String(r.shiftDate).slice(0, 10),
       shiftNum: Number(r.shiftNum),
       restaurantName: r.restaurantName,
-      currencyType: r.currencyType,
+      currency: r.currency,
+      currencyCode: r.currencyCode,
       revenue: Math.round(Number(r.revenue) * 100) / 100,
       checkCount: Number(r.checkCount),
       guestCount: Number(r.guestCount),

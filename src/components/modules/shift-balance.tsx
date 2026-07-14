@@ -6,7 +6,7 @@ import { Calendar, TrendingUp, ShoppingBag, Percent, Ban, Receipt } from "lucide
 
 interface ShiftRow {
   shiftDate: string; shiftNum: number; restaurantName: string;
-  currencyType: string; revenue: number; checkCount: number; guestCount: number;
+  currency: string; currencyCode: string; revenue: number; checkCount: number; guestCount: number;
   taxSum: number; voidSum: number; voidChecks: number;
   pricelistSum: number; costSum: number; discountSum: number; avgCheck: number;
 }
@@ -64,7 +64,7 @@ export function ShiftBalanceModule() {
                     <td className="py-2.5">{formatDate(r.shiftDate)}</td>
                     <td className="py-2.5 tabular-nums font-medium">{r.shiftNum}</td>
                     <td className="py-2.5">{r.restaurantName}</td>
-                    <td className="py-2.5 text-muted-foreground text-xs">{r.currencyType}</td>
+                    <td className="py-2.5 text-muted-foreground text-xs">{r.currency} {r.currencyCode && `(${r.currencyCode})`}</td>
                     <td className="py-2.5 text-right tabular-nums text-muted-foreground">{formatRub(r.pricelistSum)}</td>
                     <td className="py-2.5 text-right tabular-nums rk-negative">{formatRub(r.discountSum)}</td>
                     <td className="py-2.5 text-right tabular-nums font-semibold" style={{ color: "var(--bordeaux)" }}>{formatRub(r.revenue)}</td>
