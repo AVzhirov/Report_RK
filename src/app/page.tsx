@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useAuth, canAccess } from "@/lib/auth-store";
 import { LoginForm } from "@/components/auth/login-form";
 import { DashboardLayout, type ModuleId } from "@/components/dashboard/layout";
+import { ModuleErrorBoundary } from "@/components/analytics/error-boundary";
 import { OverviewModule } from "@/components/modules/overview";
 import { SalesModule } from "@/components/modules/sales";
 import { MenuModule } from "@/components/modules/menu";
@@ -41,17 +42,19 @@ export default function Home() {
 
   return (
     <DashboardLayout activeModule={effectiveModule} onChangeModule={setActiveModule}>
-      {effectiveModule === "overview"  && <OverviewModule />}
-      {effectiveModule === "sales"     && <SalesModule />}
-      {effectiveModule === "menu"      && <MenuModule />}
-      {effectiveModule === "discounts" && <DiscountsModule />}
-      {effectiveModule === "staff"     && <StaffModule />}
-      {effectiveModule === "hall"      && <HallModule />}
-      {effectiveModule === "payments"  && <PaymentsModule />}
-      {effectiveModule === "voids"     && <VoidsModule />}
-      {effectiveModule === "shiftbalance" && <ShiftBalanceModule />}
-      {effectiveModule === "forecast"  && <ForecastModule />}
-      {effectiveModule === "settings"  && <SettingsModule />}
+      <ModuleErrorBoundary>
+        {effectiveModule === "overview"  && <OverviewModule />}
+        {effectiveModule === "sales"     && <SalesModule />}
+        {effectiveModule === "menu"      && <MenuModule />}
+        {effectiveModule === "discounts" && <DiscountsModule />}
+        {effectiveModule === "staff"     && <StaffModule />}
+        {effectiveModule === "hall"      && <HallModule />}
+        {effectiveModule === "payments"  && <PaymentsModule />}
+        {effectiveModule === "voids"     && <VoidsModule />}
+        {effectiveModule === "shiftbalance" && <ShiftBalanceModule />}
+        {effectiveModule === "forecast"  && <ForecastModule />}
+        {effectiveModule === "settings"  && <SettingsModule />}
+      </ModuleErrorBoundary>
     </DashboardLayout>
   );
 }

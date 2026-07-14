@@ -19,6 +19,7 @@ import {
   getForecast,
   type AnalyticsFilter,
 } from "@/lib/analytics";
+import { getCached, setCached } from "@/lib/cache";
 
 export const dynamic = "force-dynamic";
 
@@ -51,12 +52,24 @@ export async function GET(req: NextRequest) {
   const mod = url.searchParams.get("module") || "overview";
   const filter = parseFilter(req);
 
+  // Кеширование: 60 секунд для аналитики, без кеша для restaurants
+  const cacheKey = mod !== "restaurants" ? `${mod}|${filter.from.toISOString()}|${filter.to.toISOString()}|${filter.restaurantId ?? "all"}` : "";
+  if (cacheKey) {
+    const cached = getCached(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached);
+    }
+  }
+
   try {
+    let result: unknown;
     switch (mod) {
       case "restaurants":
-        return NextResponse.json(await getRestaurants());
+        result = await getRestaurants();
+        break;
       case "overview":
-        return NextResponse.json(await getOverviewKpi(filter));
+        result = await getOverviewKpi(filter);
+        break;
       case "overview-compare": {
         const prevFilter = { ...filter };
         const diff = filter.to.getTime() - filter.from.getTime();
@@ -66,41 +79,62 @@ export async function GET(req: NextRequest) {
           getOverviewKpi(filter),
           getOverviewKpi(prevFilter),
         ]);
-        return NextResponse.json({ current, previous });
+        result = { current, previous };
+        break;
       }
       case "sales-daily":
-        return NextResponse.json(await getSalesDaily(filter));
+        result = await getSalesDaily(filter);
+        break;
       case "sales-by-restaurant":
-        return NextResponse.json(await getSalesByRestaurant(filter));
+        result = await getSalesByRestaurant(filter);
+        break;
       case "sales-hourly":
-        return NextResponse.json(await getSalesHourly(filter));
+        result = await getSalesHourly(filter);
+        break;
       case "sales-dow":
-        return NextResponse.json(await getSalesByDow(filter));
+        result = await getSalesByDow(filter);
+        break;
       case "sales-order-category":
-        return NextResponse.json(await getSalesByOrderCategory(filter));
+        result = await getSalesByOrderCategory(filter);
+        break;
       case "menu-abc":
-        return NextResponse.json(await getMenuAbc(filter));
+        result = await getMenuAbc(filter);
+        break;
       case "menu-category":
-        return NextResponse.json(await getMenuByCategory(filter));
+        result = await getMenuByCategory(filter);
+        break;
       case "discounts":
-        return NextResponse.json(await getDiscountsSummary(filter));
+        result = await getDiscountsSummary(filter);
+        break;
       case "staff":
-        return NextResponse.json(await getStaffPerformance(filter));
+        result = await getStaffPerformance(filter);
+        break;
       case "hall":
-        return NextResponse.json(await getHallHeatmap(filter));
+        result = await getHallHeatmap(filter);
+        break;
       case "payments":
-        return NextResponse.json(await getPaymentsSummary(filter));
+        result = await getPaymentsSummary(filter);
+        break;
       case "payments-by-currency":
-        return NextResponse.json(await getPaymentsByCurrency(filter));
+        result = await getPaymentsByCurrency(filter);
+        break;
       case "voids":
-        return NextResponse.json(await getVoidsSummary(filter));
+        result = await getVoidsSummary(filter);
+        break;
       case "shift-balance":
-        return NextResponse.json(await getShiftBalance(filter));
+        result = await getShiftBalance(filter);
+        break;
       case "forecast":
-        return NextResponse.json(await getForecast(filter));
+        result = await getForecast(filter);
+        break;
       default:
         return NextResponse.json({ error: "Unknown module: " + mod }, { status: 400 });
     }
+    // Кешируем результат
+    if (cacheKey) {
+      setCached(cacheKey, result);
+    }
+    return NextResponse.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });

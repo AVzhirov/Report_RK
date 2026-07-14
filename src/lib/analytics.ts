@@ -252,7 +252,7 @@ export async function getSalesDaily(filter: AnalyticsFilter) {
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
-        AND (pc.STATE IS NULL OR pc.STATE = 6)
+        AND pc.STATE = 6
       GROUP BY CONVERT(date, pc.CLOSEDATETIME)
       ORDER BY date
     `, {
@@ -385,7 +385,7 @@ export async function getSalesHourly(filter: AnalyticsFilter) {
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
-        AND (pc.STATE IS NULL OR pc.STATE = 6)
+        AND pc.STATE = 6
       GROUP BY DATEPART(WEEKDAY, pc.CLOSEDATETIME) - 1, DATEPART(HOUR, pc.CLOSEDATETIME)
     `, {
       from: filter.from,
@@ -459,7 +459,7 @@ export async function getSalesByOrderCategory(filter: AnalyticsFilter) {
         AND (@restaurantId IS NULL OR cgr.RESTAURANT = @restaurantId)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
-        AND (pc.STATE IS NULL OR pc.STATE = 6)
+        AND pc.STATE = 6
       GROUP BY uot.NAME
       ORDER BY revenue DESC
     `, {
@@ -702,7 +702,7 @@ export async function getDiscountsSummary(filter: AnalyticsFilter) {
         AND (dd.DBSTATUS IS NULL OR dd.DBSTATUS <> -1)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
-        AND (pc.STATE IS NULL OR pc.STATE = 6)
+        AND pc.STATE = 6
       GROUP BY d.SIFR, d.NAME, d.CODE
       ORDER BY sum DESC
     `, {
@@ -821,7 +821,7 @@ export async function getStaffPerformance(filter: AnalyticsFilter) {
         AND (o.DBSTATUS IS NULL OR o.DBSTATUS <> -1)
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
-        AND (pc.STATE IS NULL OR pc.STATE = 6)
+        AND pc.STATE = 6
       GROUP BY e.SIFR, e.NAME
       ORDER BY revenue DESC
     `, {
@@ -1138,7 +1138,7 @@ export async function getPaymentsSummary(filter: AnalyticsFilter) {
         AND p.SHOWINREP <> 3
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
-        AND (pc.STATE IS NULL OR pc.STATE = 6)
+        AND pc.STATE = 6
       GROUP BY p.PAYLINETYPE
       ORDER BY amount DESC
     `, {
@@ -1232,7 +1232,7 @@ export async function getPaymentsByCurrency(filter: AnalyticsFilter) {
         AND p.SHOWINREP <> 3
         AND (pc.DBSTATUS IS NULL OR pc.DBSTATUS <> -1)
         AND (pc.DELETED IS NULL OR pc.DELETED = 0)
-        AND (pc.STATE IS NULL OR pc.STATE = 6)
+        AND pc.STATE = 6
       GROUP BY cur.NAME, cur.CODE
       ORDER BY baseAmount DESC
     `, {
