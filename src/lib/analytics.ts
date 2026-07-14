@@ -1185,7 +1185,7 @@ export async function getPaymentsSummary(filter: AnalyticsFilter) {
           WHEN 7 THEN 'Тара'
           ELSE 'Тип ' + CAST(p.PAYLINETYPE AS NVARCHAR(10))
         END AS typeName,
-        SUM(pay.BASICSUM)    AS amount,
+        SUM(p.BASICSUM)     AS amount,
         0                  AS tips,
         COUNT(*)           AS count
       FROM PAYMENTS p
@@ -1277,7 +1277,7 @@ export async function getPaymentsByCurrency(filter: AnalyticsFilter) {
       SELECT
         COALESCE(cur.NAME, 'Базовая')  AS currency,
         COALESCE(CAST(cur.CODE AS NVARCHAR(10)), '') AS currencyCode,
-        SUM(pay.BASICSUM)                AS baseAmount,
+        SUM(p.BASICSUM)                 AS baseAmount,
         SUM(p.CURRLINESUM)              AS currAmount,
         COUNT(*)                        AS count
       FROM PAYMENTS p
@@ -1343,7 +1343,7 @@ export async function getShiftBalance(filter: AnalyticsFilter) {
         COALESCE(r.NAME, '')                                AS restaurantName,
         COALESCE(cur.NAME, 'Базовая')                       AS currency,
         COALESCE(CAST(cur.CODE AS NVARCHAR(10)), '')         AS currencyCode,
-        COALESCE(SUM(pay.BASICSUM), 0)                        AS revenue,
+        COALESCE(SUM(p.BASICSUM), 0)                         AS revenue,
         COUNT(DISTINCT pc.GLOBALIDENT)                      AS checkCount,
         COALESCE(SUM(CASE WHEN pc.PARENTCHECKNUM = 0 OR pc.PARENTCHECKNUM IS NULL
                            THEN pc.GUESTCNT ELSE 0 END), 0) AS guestCount,
