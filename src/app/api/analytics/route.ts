@@ -20,7 +20,6 @@ import {
   getForecast,
   type AnalyticsFilter,
 } from "@/lib/analytics";
-import { getCached, setCached } from "@/lib/cache";
 
 export const dynamic = "force-dynamic";
 
@@ -52,15 +51,6 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const mod = url.searchParams.get("module") || "overview";
   const filter = parseFilter(req);
-
-  // Кеширование: 60 секунд для аналитики, без кеша для restaurants
-  const cacheKey = mod !== "restaurants" ? `${mod}|${filter.from.toISOString()}|${filter.to.toISOString()}|${filter.restaurantId ?? "all"}` : "";
-  if (cacheKey) {
-    const cached = getCached(cacheKey);
-    if (cached) {
-      return NextResponse.json(cached);
-    }
-  }
 
   try {
     let result: unknown;
@@ -133,10 +123,6 @@ export async function GET(req: NextRequest) {
         break;
       default:
         return NextResponse.json({ error: "Unknown module: " + mod }, { status: 400 });
-    }
-    // Кешируем результат
-    if (cacheKey) {
-      setCached(cacheKey, result);
     }
     return NextResponse.json(result);
   } catch (err: unknown) {

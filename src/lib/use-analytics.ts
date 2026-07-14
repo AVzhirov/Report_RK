@@ -29,13 +29,16 @@ export function useAnalytics<T = unknown>(module: string, enabled = true) {
   const abortRef = useRef<AbortController | null>(null);
   const lastParamsRef = useRef<string>("");
   const mountedRef = useRef(false);
+  const forceRef = useRef(false);
 
   const fetchIt = useCallback(async (currentParams: string) => {
     if (!enabled) return;
 
-    // Защита от дублей
-    if (lastParamsRef.current === currentParams) return;
+    // Защита от дублей: не запускаем если параметры не изменились
+    // НО: если принудительный refetch — запускаем всегда
+    if (lastParamsRef.current === currentParams && !forceRef.current) return;
     lastParamsRef.current = currentParams;
+    forceRef.current = false;
 
     // Отменяем предыдущий запрос
     if (abortRef.current) abortRef.current.abort();
@@ -80,7 +83,7 @@ export function useAnalytics<T = unknown>(module: string, enabled = true) {
     };
   }, [paramsKey])
 
-  return { data, loading, error, refetch: () => fetchIt(paramsKey) };
+  return { data, loading, error, refetch: () => { forceRef.current = true; fetchIt(paramsKey); } };
 }
 
 export function formatRub(v: number, withSymbol = true): string {
