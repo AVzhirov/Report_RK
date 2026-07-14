@@ -91,7 +91,14 @@ export const useFilter = create<FilterState>()(
       toParams: () => {
         const r = get().getRange();
         const rest = get().restaurantId;
-        return `from=${r.from.toISOString().slice(0, 10)}&to=${r.to.toISOString().slice(0, 10)}&restaurantId=${rest ?? "all"}`;
+        // Локальный формат даты (без UTC сдвига)
+        const fromStr = r.from.getFullYear() + '-' +
+          String(r.from.getMonth() + 1).padStart(2, '0') + '-' +
+          String(r.from.getDate()).padStart(2, '0');
+        const toStr = r.to.getFullYear() + '-' +
+          String(r.to.getMonth() + 1).padStart(2, '0') + '-' +
+          String(r.to.getDate()).padStart(2, '0');
+        return `from=${fromStr}&to=${toStr}&restaurantId=${rest ?? "all"}`;
       },
     }),
     {

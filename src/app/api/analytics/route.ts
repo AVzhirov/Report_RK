@@ -32,9 +32,9 @@ function parseFilter(req: NextRequest): AnalyticsFilter {
   let from: Date;
   let to: Date;
   if (fromStr && toStr) {
-    from = new Date(fromStr);
-    to = new Date(toStr);
-    to.setHours(23, 59, 59, 0);
+    // Парсим как локальную дату (YYYY-MM-DD → полночь местного времени)
+    from = new Date(fromStr + "T00:00:00");
+    to = new Date(toStr + "T23:59:59");
   } else {
     const d = days ? parseInt(days, 10) : 30;
     to = new Date();
