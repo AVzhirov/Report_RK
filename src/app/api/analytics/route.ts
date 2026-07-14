@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getRestaurants,
   getOverviewKpi,
+  getOverviewAll,
   getSalesDaily,
   getSalesByRestaurant,
   getSalesHourly,
@@ -69,6 +70,9 @@ export async function GET(req: NextRequest) {
         break;
       case "overview":
         result = await getOverviewKpi(filter);
+        break;
+      case "overview-all":
+        result = await getOverviewAll(filter);
         break;
       case "overview-compare": {
         const prevFilter = { ...filter };

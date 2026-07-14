@@ -9,7 +9,8 @@ import {
 interface AbcRow {
   dishId: number; name: string; code: string; category: string; cuisine: string;
   price: number; costPrice: number; quantity: number; revenue: number; cost: number;
-  discount: number; margin: number; marginPct: number; abc: string; sharePct: number;
+  discount: number; margin: number; marginPct: number; abc: string; xyz: string; sharePct: number;
+  avgDailyQty: number; qtyVariation: number;
 }
 interface CatRow {
   category: string; revenue: number; quantity: number; margin: number; dishes: number; marginPct: number;
@@ -34,15 +35,22 @@ export function MenuModule() {
       <div className="p-4 rounded-xl flex items-start gap-3" style={{ background: "rgba(201, 162, 75, 0.1)", border: "1px solid #C9A24B" }}>
         <Info className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: "#C9A24B" }} />
         <div className="flex-1 text-sm">
-          <div className="font-semibold mb-1" style={{ color: "#8B6F2A" }}>Что такое ABC-анализ?</div>
+          <div className="font-semibold mb-1" style={{ color: "#8B6F2A" }}>Что такое ABC-XYZ анализ?</div>
           <div className="text-muted-foreground">
-            Блюда сортируются по выручке и делятся на 3 группы:
+            <b>ABC</b> — по выручке:
             <span className="inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded text-xs font-bold" style={{ background: "#2A5C3D", color: "white" }}>A</span>
-            — 80% выручки (звёзды меню, держат бизнес),
+            80% выручки (звёзды),
             <span className="inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded text-xs font-bold" style={{ background: "#C9A24B", color: "#2A1A12" }}>B</span>
-            — следующие 15% (стабильные позиции),
+            15% (стабильные),
             <span className="inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded text-xs font-bold" style={{ background: "#7A5A45", color: "white" }}>C</span>
-            — последние 5% (кандидаты на удаление из меню).
+            5% (кандидаты на удаление).
+            <br /><b>XYZ</b> — по стабильности спроса:
+            <span className="inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded text-xs font-bold" style={{ background: "#2A5C3D", color: "white" }}>X</span>
+            ≥10 порций/день (предсказуемо),
+            <span className="inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded text-xs font-bold" style={{ background: "#C9A24B", color: "#2A1A12" }}>Y</span>
+            1-10/день (переменно),
+            <span className="inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded text-xs font-bold" style={{ background: "#7A5A45", color: "white" }}>Z</span>
+            &lt;1/день (нерегулярно). <b>AX</b> — звёзды, <b>CZ</b> — на удаление.
           </div>
         </div>
       </div>
@@ -105,6 +113,18 @@ export function MenuModule() {
             <div className="flex items-center gap-1">
               <AbcBadge abc="C" /> <span className="text-muted-foreground">— аутсайдеры (5%)</span>
             </div>
+            <div className="flex items-center gap-1 ml-3">
+              <span className="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-bold" style={{ background: "#2A5C3D", color: "white" }}>X</span>
+              <span className="text-muted-foreground">— стабильно</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-bold" style={{ background: "#C9A24B", color: "#2A1A12" }}>Y</span>
+              <span className="text-muted-foreground">— переменно</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-bold" style={{ background: "#7A5A45", color: "white" }}>Z</span>
+              <span className="text-muted-foreground">— нерегулярно</span>
+            </div>
           </div>
         }
       >
@@ -114,9 +134,11 @@ export function MenuModule() {
               <thead className="sticky top-0 bg-card z-10">
                 <tr className="text-left text-xs uppercase text-muted-foreground border-b border-border">
                   <th className="py-2 pl-2">ABC</th>
+                  <th className="py-2">XYZ</th>
                   <th className="py-2">Блюдо</th>
                   <th className="py-2">Категория</th>
                   <th className="py-2 text-right">Кол-во</th>
+                  <th className="py-2 text-right">в день</th>
                   <th className="py-2 text-right">Выручка</th>
                   <th className="py-2 text-right">Маржа</th>
                   <th className="py-2 text-right">Маржа %</th>
@@ -128,11 +150,21 @@ export function MenuModule() {
                   <tr key={r.dishId} className="border-b border-border/40 hover:bg-muted/30">
                     <td className="py-2 pl-2"><AbcBadge abc={r.abc} /></td>
                     <td className="py-2">
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-bold"
+                        style={{
+                          background: r.xyz === "X" ? "#2A5C3D" : r.xyz === "Y" ? "#C9A24B" : "#7A5A45",
+                          color: r.xyz === "Y" ? "#2A1A12" : "white",
+                        }}>
+                        {r.xyz}
+                      </span>
+                    </td>
+                    <td className="py-2">
                       <div className="font-medium">{r.name}</div>
                       <div className="text-xs text-muted-foreground">{r.code} · {r.cuisine}</div>
                     </td>
                     <td className="py-2 text-muted-foreground">{r.category}</td>
                     <td className="py-2 text-right tabular-nums">{formatNum(r.quantity, 0)}</td>
+                    <td className="py-2 text-right tabular-nums text-muted-foreground text-xs">{r.avgDailyQty}</td>
                     <td className="py-2 text-right tabular-nums font-medium" style={{ color: "var(--bordeaux)" }}>{formatRub(r.revenue)}</td>
                     <td className="py-2 text-right tabular-nums">{formatRub(r.margin)}</td>
                     <td className="py-2 text-right tabular-nums">

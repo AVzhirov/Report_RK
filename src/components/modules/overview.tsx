@@ -54,13 +54,32 @@ function deltaPct(curr: number, prev: number): number | null {
   return Math.round(((curr - prev) / prev) * 1000) / 10;
 }
 
+interface OverviewAllData {
+  kpi: OverviewData;
+  daily: SalesDaily[];
+  byRest: { name: string; revenue: number; checks: number; avgCheck: number }[];
+  topDishes: AbcRow[];
+  hourly: HourlyData;
+}
+
 export function OverviewModule() {
-  const { data: kpi, loading: kpiLoading, error: kpiErr } = useAnalytics<OverviewData>("overview");
+  // Один объединённый запрос вместо 5 отдельных
+  const { data: all, loading: allLoading, error: allErr } = useAnalytics<OverviewAllData>("overview-all");
   const { data: compare } = useAnalytics<CompareData>("overview-compare");
-  const { data: daily, loading: dailyLoading, error: dailyErr } = useAnalytics<SalesDaily[]>("sales-daily");
-  const { data: byRest, loading: byRestLoading } = useAnalytics<{ name: string; revenue: number; checks: number; avgCheck: number }[]>("sales-by-restaurant");
-  const { data: topDishes, loading: topLoading } = useAnalytics<AbcRow[]>("menu-abc");
-  const { data: hourly, loading: hourLoading } = useAnalytics<HourlyData>("sales-hourly");
+
+  const kpi = all?.kpi;
+  const daily = all?.daily;
+  const byRest = all?.byRest;
+  const topDishes = all?.topDishes;
+  const hourly = all?.hourly;
+
+  const kpiLoading = allLoading;
+  const dailyLoading = allLoading;
+  const byRestLoading = allLoading;
+  const topLoading = allLoading;
+  const hourLoading = allLoading;
+  const kpiErr = allErr;
+  const dailyErr = allErr;
 
   const hasData = kpi ? kpi.totalChecks > 0 : false;
   const prev = compare?.previous;

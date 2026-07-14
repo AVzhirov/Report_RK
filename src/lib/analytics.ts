@@ -80,6 +80,21 @@ export interface AnalyticsFilter {
 }
 
 // ---------------------------------------------------------------------------
+// ОБЗОР — объединённый endpoint (KPI + daily + restaurants + topDishes + hourly)
+// ---------------------------------------------------------------------------
+
+export async function getOverviewAll(filter: AnalyticsFilter) {
+  const [kpi, daily, byRest, topDishes, hourly] = await Promise.all([
+    getOverviewKpi(filter),
+    getSalesDaily(filter),
+    getSalesByRestaurant(filter),
+    getMenuAbc(filter),
+    getSalesHourly(filter),
+  ]);
+  return { kpi, daily, byRest, topDishes: (topDishes || []).slice(0, 10), hourly };
+}
+
+// ---------------------------------------------------------------------------
 // РЕСТОРАНЫ
 // ---------------------------------------------------------------------------
 
@@ -502,11 +517,15 @@ export interface MenuAbcRow {
   margin: number;
   marginPct: number;
   abc: string;
+  xyz: string;
   sharePct: number;
+  avgDailyQty: number;
+  qtyVariation: number;
 }
 
-function buildAbcRows<T extends { revenue: number }>(
-  rows: Array<Omit<MenuAbcRow, "margin" | "marginPct" | "abc" | "sharePct">>
+function buildAbcRows<T extends { revenue: number; quantity: number }>(
+  rows: Array<Omit<MenuAbcRow, "margin" | "marginPct" | "abc" | "xyz" | "sharePct" | "avgDailyQty" | "qtyVariation">>,
+  daysCount: number = 30
 ): MenuAbcRow[] {
   const totalRevenue = rows.reduce((s, r) => s + Number(r.revenue), 0);
   let cumPct = 0;
@@ -516,6 +535,12 @@ function buildAbcRows<T extends { revenue: number }>(
     const margin = Math.round((revenue - cost) * 100) / 100;
     const pct = totalRevenue > 0 ? (revenue / totalRevenue) * 100 : 0;
     cumPct += pct;
+    const avgDailyQty = daysCount > 0 ? Number(r.quantity) / daysCount : 0;
+    // XYZ: коэффициент вариации = σ / mean
+    // Упрощённо: если quantity > 0 и avgDailyQty < 1 → нестабильный (Z)
+    // Если avgDailyQty >= 10 → стабильный (X)
+    // Иначе — Y
+    const xyz = avgDailyQty >= 10 ? "X" : avgDailyQty >= 1 ? "Y" : "Z";
     return {
       ...r,
       revenue,
@@ -523,7 +548,10 @@ function buildAbcRows<T extends { revenue: number }>(
       margin,
       marginPct: revenue > 0 ? Math.round((margin / revenue) * 1000) / 10 : 0,
       abc: cumPct <= 80 ? "A" : cumPct <= 95 ? "B" : "C",
+      xyz,
       sharePct: Math.round(pct * 10) / 10,
+      avgDailyQty: Math.round(avgDailyQty * 10) / 10,
+      qtyVariation: 0,
     };
   });
 }
